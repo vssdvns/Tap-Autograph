@@ -41,6 +41,10 @@ Run merchant checks with `cd merchant && node --test`. Run bridge checks with `p
 
 The Wi-Fi prototype uses local HTTP, and the experimental NFC transfer is unauthenticated. Use test artwork. Signing keys, local SDK paths, build products and personal signature data are excluded from this repository. Third-party notices and bundled dependency licenses remain with each component.
 
+## Two-tap demo 0.8
+
+The feature branch adds first-tap fictional card acceptance and second-tap autograph sharing with final amount review on the unlocked foreground phone. See `docs/TWO-TAP-CHECKOUT.md` for setup, protocol and limits.
+
 ## Current NFC checkout
 
 Reader kit 0.7 connects a new NFC autograph transfer to an explicitly armed merchant order after tip confirmation. See `merchant/NFC-CHECKOUT.md`. The phone needs no Wi-Fi for this mode; payment is simulated on the laptop.

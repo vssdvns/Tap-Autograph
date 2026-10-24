@@ -1,3 +1,11 @@
+# Lab 0.8 — two-tap NFC demo
+
+Home now includes **Two-tap NFC checkout**. Start the foreground demo, tap once for fictional card acceptance, remove the phone to choose a merchant tip, then tap again to review the final total and approve autograph sharing. Keep holding until merchant receipt is acknowledged. See `../docs/TWO-TAP-CHECKOUT.md` for the complete flow and protocol. The old NFC payload lab is unchanged.
+
+The distributed APK is signed with the retained Lab development key so it can update Lab 0.6. That key is excluded from GitHub; local builds use your own debug key.
+
+## Historical studio release notes
+
 > GitHub source build note: signing keys are excluded. Debug builds use your local Android debug key and cannot update the previously distributed Lab APK without matching its signing key. Historical release notes below describe packaged APKs.
 
 # Tap Autograph Lab 0.6 — autograph studio

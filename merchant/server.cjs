@@ -43,8 +43,8 @@ function cartItems(cart) {
 function createApp({ now = () => Date.now(), port = 8787 } = {}) {
   const sessions = new Map();
   const readerHub = createReaderHub({now});
-  let nfcTarget=null;
-  function disarm(s){if(nfcTarget?.id===s.id)nfcTarget=null;s.nfcArmedUntil=0;}
+  let nfcTarget=null,twoTapTarget=null;
+  function disarm(s){if(twoTapTarget===s.id&&['completed','cancelled'].includes(s.stage))twoTapTarget=null;if(nfcTarget?.id===s.id)nfcTarget=null;s.nfcArmedUntil=0;}
   const cleanup = setInterval(() => { for (const [id, s] of sessions) if (s.expiresAt <= now()) { s.autograph = null; sessions.delete(id); } }, 30000).unref();
   function get(id) { const s = sessions.get(id); if (!s) fail(404, 'Checkout not found. Start a new one.'); if (s.expiresAt <= now()) { s.autograph = null; sessions.delete(id); fail(410, 'Checkout expired. Start a new checkout.'); } return s; }
   function snapshot(s, merchant = false) {
@@ -55,7 +55,7 @@ function createApp({ now = () => Date.now(), port = 8787 } = {}) {
   function owner(req) { return /(?:^|;\s*)merchant=([a-f0-9]{64})(?:;|$)/.exec(req.headers.cookie || '')?.[1]; }
   function merchant(req, s) { if (!owner(req) || owner(req) !== s.owner) fail(403, 'This checkout belongs to another merchant window.'); }
   function phone(req, s) { if (!s.deviceToken || req.headers.authorization !== 'Bearer ' + s.deviceToken) fail(403, 'Phone is not paired with this checkout.'); }
-  function change(s, stage) { if(stage!=='autograph')disarm(s); s.stage = stage; s.revision++; }
+  function change(s, stage) { if(stage!=='autograph')disarm(s);if(['completed','cancelled'].includes(stage)&&twoTapTarget===s.id)twoTapTarget=null; s.stage = stage; s.revision++; }
   function complete(s) { s.completedAt = now(); s.autograph = null; change(s, 'completed'); }
   function originCheck(req) {
     if (!req.headers.origin) return; // Native Android requests do not carry browser Origin.
@@ -87,6 +87,25 @@ function createApp({ now = () => Date.now(), port = 8787 } = {}) {
           if (req.headers.origin && new URL(req.headers.origin).host !== req.headers.host) fail(403,'Cross-origin reader access is not supported.');
           return send(res,200,{token:readerHub.token});
         }
+        if(url.pathname==='/api/reader/checkout'){
+          if(req.headers.authorization!=='Bearer '+readerHub.token)fail(403,'Reader token required.');
+          const s=sessions.get(twoTapTarget);
+          if(!s||s.expiresAt<=now()||!['paired','tip','autograph'].includes(s.stage))return send(res,200,{checkout:null});
+          return send(res,200,{checkout:{id:s.id,nonce:s.nfcNonce,amount:s.subtotal+s.tax+s.tip,phase:s.stage==='autograph'?2:1}});
+        }
+        if(req.method==='POST'&&url.pathname==='/api/reader/accepted'){
+          if(req.headers.authorization!=='Bearer '+readerHub.token)fail(403,'Reader token required.');
+          const b=await jsonBody(req),s=get(b.id);
+          if(twoTapTarget!==s.id||s.mode!=='two-tap'||b.nonce!==s.nfcNonce)fail(409,'Checkout changed.');
+          if(s.stage==='paired')change(s,'tip');else if(!['tip','autograph'].includes(s.stage))fail(409,'Checkout ended.');
+          return send(res,200,{accepted:true});
+        }
+        if(req.method==='POST'&&url.pathname==='/api/reader/skip-checkout'){
+          if(req.headers.authorization!=='Bearer '+readerHub.token)fail(403,'Reader token required.');
+          const b=await jsonBody(req),s=get(b.id);
+          if(twoTapTarget!==s.id||b.nonce!==s.nfcNonce||s.stage!=='autograph')fail(409,'Checkout changed.');
+          complete(s);return send(res,200,{accepted:true});
+        }
         if (req.method === 'GET' && url.pathname === '/api/reader/state') {
           if (!owner(req)) fail(403,'Open the reader lab first.');
           return send(res,200,readerHub.snapshot());
@@ -98,8 +117,17 @@ function createApp({ now = () => Date.now(), port = 8787 } = {}) {
         if (req.method === 'POST' && url.pathname === '/api/reader/event') {
           if (req.headers.authorization !== 'Bearer '+readerHub.token) fail(403,'Reader bridge token is invalid. Restart the bridge.');
           const body=await jsonBody(req);let result;
+          let bound=null;
+          if(body.checkoutId){
+            bound=get(body.checkoutId);
+            if(bound.mode==='two-tap'&&body.nonce===bound.nfcNonce&&bound.nfcPacketKey===body.session+':'+body.sha256)return send(res,200,{accepted:true,duplicate:true,checkoutId:bound.id});
+            if(twoTapTarget!==bound.id||bound.mode!=='two-tap'||bound.stage!=='autograph'||body.nonce!==bound.nfcNonce)fail(409,'NFC checkout changed or ended.');
+          }
           try {result=readerHub.event(body);} catch(error){fail(400,error.message);}
-          if(body.type==='packet'&&!result.duplicate&&nfcTarget){
+          if(body.type==='packet'&&!result.duplicate&&bound){
+            bound.nfcPacketKey=body.session+':'+body.sha256;bound.autograph=readerHub.snapshot().latest.autograph;bound.autographShared=true;bound.autographSource=body.simulated?'simulated-reader':'nfc';change(bound,'animating');readerHub.clear();result.checkoutId=bound.id;
+          }
+          if(body.type==='packet'&&!result.duplicate&&!bound&&nfcTarget){
             const target=nfcTarget;nfcTarget=null;const s=sessions.get(target.id);
             if(s&&s.stage==='autograph'&&s.expiresAt>now()&&target.until>now()){
               s.autograph=readerHub.snapshot().latest.autograph;s.autographShared=true;
@@ -122,14 +150,20 @@ function createApp({ now = () => Date.now(), port = 8787 } = {}) {
         if ([...sessions.values()].filter(s => s.owner === key && s.expiresAt > now() && !['completed','cancelled'].includes(s.stage)).length >= 5) fail(429,'Finish or cancel an existing checkout first.');
         if (sessions.size >= 200) fail(429,'Too many checkouts. Restart the demo server.');
         const body = await jsonBody(req); const items = cartItems(body.cart);
-        const mode=body.mode==='nfc'?'nfc':'wifi';
-        if(mode==='nfc'&&!loopbackRequest(req))fail(403,'Open NFC checkout on localhost.');
+        const mode=['nfc','two-tap'].includes(body.mode)?body.mode:'wifi';
+        if(mode!=='wifi'&&!loopbackRequest(req))fail(403,'Open NFC checkout on localhost.');
         const ip = body.address;
         if (!addresses().some(a => a.address === ip) && !['127.0.0.1','10.0.2.2'].includes(ip)) fail(400,'Select an address belonging to this laptop.');
         const id = crypto.randomUUID(), pairToken = token(), subtotal = items.reduce((n,i) => n+i.price*i.quantity,0);
         const actualPort = Number(req.headers.host?.split(':').at(-1)) || port;
         const base = `http://${ip}:${actualPort}`;
-        const s = { id, owner:key, pairToken, claimId:null, deviceToken:null, stage:mode==='nfc'?'paired':'awaiting', mode, revision:1, items, subtotal, tax:Math.round(subtotal*.0875), tip:0, expiresAt:now()+TTL, card:0, autograph:null, autographShared:false, completedAt:null, speed:1, reducedMotion:false, pairingUrl:`${base}/pair#id=${id}&token=${pairToken}` };
+        const s = { id, owner:key, pairToken, claimId:null, deviceToken:null, stage:mode!=='wifi'?'paired':'awaiting', mode, revision:1, items, subtotal, tax:Math.round(subtotal*.0875), tip:0, expiresAt:now()+TTL, card:0, autograph:null, autographShared:false, completedAt:null, speed:1, reducedMotion:false, pairingUrl:`${base}/pair#id=${id}&token=${pairToken}` };
+        if(mode==='two-tap'){
+          const prior=sessions.get(twoTapTarget);
+          if(prior&&prior.expiresAt>now()&&!['completed','cancelled'].includes(prior.stage))fail(409,'Finish or cancel the active two-tap order first.');
+          if(nfcTarget&&nfcTarget.until>now())fail(409,'Another checkout reserved the reader.');
+          s.nfcNonce=crypto.randomBytes(16).toString('hex');twoTapTarget=id;
+        }
         sessions.set(id,s); return send(res,201,snapshot(s,true));
       }
       if (parts[0] === 'api' && parts[1] === 'checkouts' && parts[2]) {
@@ -146,6 +180,7 @@ function createApp({ now = () => Date.now(), port = 8787 } = {}) {
         if(req.method==='POST'&&parts[3]==='arm-nfc'){
           if(!loopbackRequest(req))fail(403,'Open NFC checkout on localhost.');
           if(s.mode!=='nfc'||s.stage!=='autograph')fail(409,'Confirm the final total in NFC mode first.');
+          if(twoTapTarget&&sessions.get(twoTapTarget)?.expiresAt>now())fail(409,'Finish the two-tap checkout first.');
           if(nfcTarget&&nfcTarget.until>now()&&nfcTarget.id!==s.id)fail(409,'Another checkout is waiting for NFC. Finish or cancel it first.');
           readerHub.clear();s.nfcArmedUntil=Math.min(now()+60000,s.expiresAt);
           nfcTarget={id:s.id,until:s.nfcArmedUntil};s.revision++;
@@ -173,7 +208,7 @@ function createApp({ now = () => Date.now(), port = 8787 } = {}) {
       if (parts[0] === 'api' && parts[1] === 'phone' && parts[2]) {
         const s = get(parts[2]);
         if (req.method === 'POST' && parts[3] === 'claim') {
-          if(s.mode==='nfc')fail(409,'This order uses NFC instead of phone pairing.');
+          if(s.mode!=='wifi')fail(409,'This order uses NFC instead of phone pairing.');
           const body = await jsonBody(req);
           if (req.headers.authorization !== 'Bearer ' + s.pairToken || !/^[a-f0-9-]{36}$/.test(body.claimId || '')) fail(403,'Pairing code is invalid.');
           if (s.stage === 'cancelled' || s.stage === 'completed') fail(409,'This checkout has ended.');

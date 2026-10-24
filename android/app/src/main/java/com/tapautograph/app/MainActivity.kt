@@ -98,6 +98,7 @@ class MainActivity : ComponentActivity() {
                     composable("live") { LiveScreen(vm, data, { nav.popBackStack() }, {
                         vm.startEditor("live"); nav.navigate("editor")
                     }) }
+                    composable("two-tap") { TwoTapScreen(data){nav.popBackStack()} }
                     composable("nfc-lab") { NfcLabScreen(data, { nav.popBackStack() }, { vm.startEditor("nfc-lab"); nav.navigate("editor") }) }
                     composable("gallery") { StudioGallery(vm,data,{nav.popBackStack()},{nav.navigate(it)},{vm.startEditor("gallery",fresh=true);nav.navigate("editor")}) }
                     composable("studio-name") { NameStudio(vm,data){nav.popBackStack()} }
@@ -164,6 +165,7 @@ class MainActivity : ComponentActivity() {
             Text("Draw, import from paper, explore name styles, or pick a mood doodle.")
             Primary("Open your gallery") { navigate("gallery") }
         }
+        Primary("Two-tap NFC checkout") { navigate("two-tap") }
         Primary("Try demo checkout") { vm.beginCheckout(); navigate("checkout") }
         Block {
             Row(verticalAlignment = Alignment.CenterVertically) {
