@@ -92,3 +92,7 @@ No NFC, Samsung Wallet SDK, Google Wallet API, payment processor, or production 
 - `vendor/qrcode.cjs`: MIT-licensed QR Code Generator by Kazuhiko Arase.
 
 Run tests with `node --test test/*.test.cjs` (or `npm test`). See VALIDATION.md for actual checks and remaining physical-device work.
+
+## Cashier + customer display
+
+Run `node server.cjs` to serve the cashier on 8787 and the paired customer display on 8788. Start with the cashier pairing link; the customer chooses their tip and sees their autograph replay. See [DUAL-DISPLAY.md](DUAL-DISPLAY.md). The previous combined demo is available at `/classic`.

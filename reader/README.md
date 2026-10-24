@@ -37,3 +37,7 @@ The first tap offers the base total; the phone shows demo acceptance only after 
 This is a demonstration with fictional card acceptance, not Samsung/Google Wallet integration, identity verification or payment authorization. NFC transport and reader-merchant correlation are not encrypted or authenticated. A nonce binds messages within this prototype but does not prove merchant identity. The phone uses the fixed Harbor Coffee/USD demo presentation. The app does not enable system NFC, launch from a locked phone or unlock the device. The signature is optional personalization.
 
 Phone completion means the merchant server accepted the ink; the merchant browser may still be finishing its animation. This release has no persistent phone receipt history for the two-tap mode.
+
+## Separate cashier and customer displays
+
+Open http://localhost:8787 for the cashier. Use its Open customer display link to pair port 8788, then move that window to your portable monitor. For another browser device, select the laptop Wi-Fi address before copying the link. See [DUAL-DISPLAY.md](DUAL-DISPLAY.md). No ESP32 reflash or phone APK update is required.

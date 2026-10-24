@@ -60,3 +60,7 @@ Reader kit 0.7 connects a new NFC autograph transfer to an explicitly armed merc
 ## Wallet V2 (0.9)
 
 Wallet/Studio tabs, swipeable demo cards, opt-in automatic autograph sharing and a 45-second window. Android default-wallet selection is available for controlled prototype-reader tests; real payments are not supported. See [setup and device validation](docs/WALLET-V2.md).
+
+## Dual-display merchant demo (0.10)
+
+Cashier on port 8787, paired customer display on port 8788. Live cart updates, customer-side tipping, NFC autograph playback and synchronized receipts. [Setup and controls](docs/DUAL-DISPLAY.md). The original combined demo remains at `/classic`. No Android update or ESP32 reflash is needed.

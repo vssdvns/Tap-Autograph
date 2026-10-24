@@ -10,7 +10,7 @@ Install the signed 0.9 APK over the previous Lab APK; the app label is now Tap A
 2. Swipe the stacked cards to select Everyday or Weekend. The selection persists and the updated merchant receipt reflects it.
 3. Enable Automatic autograph and accept its one-time explanation. This is permission to share on a subsequent tap after a demo payment, without a second phone button.
 4. Choose default wallet using the Android system dialog if testing from outside the app. Selecting this app replaces the current default wallet; switch back to your regular wallet before real purchases. Alternatively use Open tap screen for foreground testing.
-5. Start merchant and reader; create a Two-tap NFC demo checkout.
+5. Start merchant and reader. In merchant 0.10, open the cashier on port 8787, pair its customer display on 8788, add products and choose Proceed to payment. The original combined demo is retained at /classic.
 6. Keep the phone screen awake. Tap. Android may require unlocking, then another tap. A matching unlocked TAP2 offer starts a demo checkout; the HCE service attempts to bring its screen forward. Samsung/Android may suppress that activity launch, so Open tap screen remains the fallback.
 7. The merchant acknowledges fictional payment acceptance. The phone shows blue confirmation, haptic feedback and a short notification tone if the UI is visible and audio settings allow it. The 45-second window starts at that acknowledgement.
 8. Choose and confirm a tip on the merchant. Tap again, or leave the phone nearby. The bound final-total offer automatically enables the saved autograph transfer. No Share autograph button is required in automatic mode.

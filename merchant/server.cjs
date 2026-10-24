@@ -40,12 +40,28 @@ function cartItems(cart) {
     seen.add(line.id); return { id: item.id, name: item.name, quantity: line.quantity, price: item.price };
   });
 }
-function createApp({ now = () => Date.now(), port = 8787 } = {}) {
+function createApp({ now = () => Date.now(), port = 8787, customerPort = port + 1 } = {}) {
   const sessions = new Map();
+  const displays = new Map();
+  function displayForOwner(key){return [...displays.values()].find(d=>d.owner===key);}
+  function displayCheckout(d){return d.checkoutId?sessions.get(d.checkoutId):null;}
+  function displayAccess(req){
+    const credential=/^Bearer ([a-f0-9]{64})$/.exec(req.headers.authorization||'')?.[1];
+    const d=displays.get(credential);
+    if(!d||d.expiresAt<=now())fail(403,'Display link expired. Ask the cashier for a new link.');
+    return d;
+  }
+  function displaySnapshot(d){
+    const s=displayCheckout(d);
+    const valid=s&&s.expiresAt>now();
+    const checkout=valid?snapshot(s):s?{id:s.id,stage:'expired',revision:s.revision}:null;
+    if(valid&&s.stage==='animating'){checkout.autograph=s.autograph;checkout.speed=s.speed;checkout.reducedMotion=s.reducedMotion;}
+    return {connected:!!d.lastSeen&&d.lastSeen>now()-2500,revision:`${d.revision}:${s?.revision||0}:${valid?'live':'idle'}`,cart:d.items,subtotal:d.subtotal,tax:d.tax,total:d.subtotal+d.tax,checkout};
+  }
   const readerHub = createReaderHub({now});
   let nfcTarget=null,twoTapTarget=null;
   function disarm(s){if(twoTapTarget===s.id&&['completed','cancelled'].includes(s.stage))twoTapTarget=null;if(nfcTarget?.id===s.id)nfcTarget=null;s.nfcArmedUntil=0;}
-  const cleanup = setInterval(() => { for (const [id, s] of sessions) if (s.expiresAt <= now()) { s.autograph = null; sessions.delete(id); } }, 30000).unref();
+  const cleanup = setInterval(() => { for (const [id, s] of sessions) if (s.expiresAt <= now()) { s.autograph = null; sessions.delete(id); } for(const [key,d] of displays)if(d.expiresAt<=now())displays.delete(key); }, 30000).unref();
   function get(id) { const s = sessions.get(id); if (!s) fail(404, 'Checkout not found. Start a new one.'); if (s.expiresAt <= now()) { s.autograph = null; sessions.delete(id); fail(410, 'Checkout expired. Start a new checkout.'); } return s; }
   function snapshot(s, merchant = false) {
     const result = { id: s.id, merchant: 'Harbor Coffee', stage: s.stage, revision: s.revision, expiresAt: s.expiresAt, items: s.items, subtotal: s.subtotal, tax: s.tax, tip: s.tip, total: s.subtotal + s.tax + s.tip, card: s.card, mode:s.mode, nfcArmedUntil:s.nfcArmedUntil||0, autographSource:s.autographSource||null, autographShared: s.autographShared, completedAt: s.completedAt };
@@ -69,18 +85,50 @@ function createApp({ now = () => Date.now(), port = 8787 } = {}) {
     try { return JSON.parse(Buffer.concat(chunks).toString()); } catch { fail(400, 'Invalid JSON.'); }
   }
   const send = (res, status, value, type = 'application/json') => { res.writeHead(status, { 'Content-Type': type + '; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'Cross-Origin-Resource-Policy': 'same-origin' }); res.end(type === 'application/json' ? JSON.stringify(value) : value); };
-  const server = http.createServer(async (req, res) => {
+  const handler = async (req, res) => {
     try {
       const url = new URL(req.url, 'http://localhost'); const parts = url.pathname.split('/').filter(Boolean);
-      if (req.method === 'GET' && ['/','/app.js','/style.css','/pair','/pair.js','/ink.js','/simulator.html','/simulator.js','/nfc-lab','/nfc-lab.js','/nfc-lab.css'].includes(url.pathname)) {
-        if (['/','/nfc-lab'].includes(url.pathname) && !owner(req)) res.setHeader('Set-Cookie', `merchant=${token()}; HttpOnly; SameSite=Strict; Path=/`);
+      if(req.customerSurface && !['/','/customer','/display.js','/counter.css','/ink.js','/api/display/state','/api/display/action'].includes(url.pathname))fail(403,'Customer display only. Use the cashier port for merchant controls.');
+      if (req.method === 'GET' && ['/','/classic','/customer','/cashier.js','/display.js','/counter.css','/app.js','/style.css','/pair','/pair.js','/ink.js','/simulator.html','/simulator.js','/nfc-lab','/nfc-lab.js','/nfc-lab.css'].includes(url.pathname)) {
+        if (!req.customerSurface && ['/','/classic','/nfc-lab'].includes(url.pathname) && !owner(req)) res.setHeader('Set-Cookie', `merchant=${token()}; HttpOnly; SameSite=Strict; Path=/`);
         res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
-        const file = url.pathname === '/' ? 'index.html' : url.pathname === '/nfc-lab' ? 'nfc-lab.html' : url.pathname === '/pair' ? 'pair.html' : url.pathname.slice(1);
+        const file = url.pathname === '/' ? (req.customerSurface?'customer.html':'cashier.html') : url.pathname === '/classic' ? 'index.html' : url.pathname === '/customer' ? 'customer.html' : url.pathname === '/nfc-lab' ? 'nfc-lab.html' : url.pathname === '/pair' ? 'pair.html' : url.pathname.slice(1);
         const type = file.endsWith('.html') ? 'text/html' : file.endsWith('.css') ? 'text/css' : 'text/javascript';
         return send(res, 200, fs.readFileSync(path.join(__dirname,'public',file),'utf8'), type);
       }
       if (req.method === 'GET' && url.pathname === '/api/config') return send(res,200,{ catalog: CATALOG, addresses: addresses(), port: Number(req.headers.host?.split(':').at(-1)) || port, ttl: TTL });
       if (req.method === 'POST') originCheck(req);
+      if(req.method==='POST'&&url.pathname==='/api/display'){
+        const key=owner(req);if(!key)fail(403,'Open the cashier page first.');
+        let d=displayForOwner(key);
+        if(!d){if(displays.size>=200)fail(429,'Too many displays. Restart the demo server.');d={owner:key,token:token(),items:[],subtotal:0,tax:0,revision:1,checkoutId:null,expiresAt:now()+6*60*60*1000};displays.set(d.token,d);}
+        d.expiresAt=now()+6*60*60*1000;
+        return send(res,200,{token:d.token,customerPort:customerServer.address()?.port||customerPort,addresses:addresses(),...displaySnapshot(d)});
+      }
+      if(req.method==='POST'&&url.pathname==='/api/display/cart'){
+        const d=displayForOwner(owner(req));if(!d)fail(403,'Open the cashier page first.');
+        const current=displayCheckout(d);if(current&&current.expiresAt>now()&&!['completed','cancelled'].includes(current.stage))fail(409,'Finish or cancel the checkout before editing its cart.');
+        const b=await jsonBody(req);const items=Array.isArray(b.cart)&&b.cart.length===0?[]:cartItems(b.cart);
+        d.items=items;d.subtotal=items.reduce((sum,i)=>sum+i.price*i.quantity,0);d.tax=Math.round(d.subtotal*.0875);d.checkoutId=null;d.revision++;
+        return send(res,200,displaySnapshot(d));
+      }
+      if(req.method==='GET'&&url.pathname==='/api/display/state'){const d=displayAccess(req);d.lastSeen=now();return send(res,200,displaySnapshot(d));}
+      if(req.method==='POST'&&url.pathname==='/api/display/action'){
+        const d=displayAccess(req),b=await jsonBody(req),s=get(d.checkoutId);
+        if(b.checkoutId!==s.id)fail(409,'This order changed. Please check the screen again.');
+        if(b.action==='tip'){
+          if(s.stage!=='tip')fail(409,'Tip choice is not available now.');
+          if(!Number.isInteger(b.tip)||b.tip<0||b.tip>10000)fail(400,'Tip must be between $0 and $100.');
+          s.tip=b.tip;change(s,'autograph');
+        }else if(b.action==='complete'){
+          if(!['animating','completed'].includes(s.stage))fail(409,'No autograph is ready.');
+          if(s.stage!=='completed')complete(s);
+        }else if(b.action==='skip'){
+          if(!['autograph','completed'].includes(s.stage))fail(409,'Confirm a tip before finishing without autograph.');
+          if(s.stage!=='completed'){s.autographShared=false;complete(s);}
+        }else fail(400,'Customer action is not available.');
+        return send(res,200,displaySnapshot(d));
+      }
       if (url.pathname.startsWith('/api/reader/')) {
         if (!loopbackRequest(req)) fail(403,'Reader bridge is available only on localhost.');
         if (req.method === 'GET' && url.pathname === '/api/reader/config') {
@@ -166,7 +214,9 @@ function createApp({ now = () => Date.now(), port = 8787 } = {}) {
           if(nfcTarget&&nfcTarget.until>now())fail(409,'Another checkout reserved the reader.');
           s.nfcNonce=crypto.randomBytes(16).toString('hex');twoTapTarget=id;
         }
-        sessions.set(id,s); return send(res,201,snapshot(s,true));
+        sessions.set(id,s);
+        if(body.customerDisplay===true){const d=displayForOwner(key);if(!d){sessions.delete(id);disarm(s);fail(409,'Connect a customer display first.');}d.checkoutId=id;d.revision++;}
+        return send(res,201,snapshot(s,true));
       }
       if (parts[0] === 'api' && parts[1] === 'checkouts' && parts[2]) {
         const s = get(parts[2]); merchant(req,s);
@@ -240,15 +290,22 @@ function createApp({ now = () => Date.now(), port = 8787 } = {}) {
       }
       fail(404,'Not found.');
     } catch (error) { if (!error.status) console.error('Local server error:', error.message); if (!res.headersSent) send(res,error.status || 500,{ error:error.status ? error.message : 'The local demo server encountered an error.' }); else res.end(); }
-  });
-  server.on('close', () => { clearInterval(cleanup); sessions.clear(); });
-  return { server, sessions };
+  };
+  const server=http.createServer(handler);
+  const customerServer=http.createServer((req,res)=>{req.customerSurface=true;handler(req,res);});
+  server.on('close', () => { clearInterval(cleanup); sessions.clear();displays.clear();if(customerServer.listening)customerServer.close(); });
+  return { server, customerServer, sessions };
 }
 if (require.main === module) {
   const flag = process.argv.indexOf('--port'); const port = Number(flag >= 0 ? process.argv[flag+1] : process.env.PORT || 8787);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Use a valid port.');
-  const {server} = createApp({port});
+  const customerFlag=process.argv.indexOf('--customer-port');
+  const customerPort=Number(customerFlag>=0?process.argv[customerFlag+1]:process.env.CUSTOMER_PORT||port+1);
+  if(!Number.isInteger(customerPort)||customerPort<1||customerPort>65535||customerPort===port)throw new Error('Choose a different valid customer port.');
+  const {server,customerServer} = createApp({port,customerPort});
+  customerServer.listen(customerPort,'0.0.0.0',()=>console.log(`Customer display: http://localhost:${customerPort} (open the cashier pairing link)`));
+  customerServer.on('error',e=>{console.error(`Customer display: ${e.message}`);server.close();process.exitCode=1;});
   server.listen(port,'0.0.0.0',() => { console.log(`\nTap Autograph · Merchant demo\nOpen on this laptop: http://localhost:${port}\n`); for (const a of addresses()) console.log(`Phone network: ${a.name} — ${a.address}`); console.log('\nKeep this window open. Ctrl+C stops the server.\n'); });
-  server.on('error', e => { console.error(e.code === 'EADDRINUSE' ? `Port ${port} is in use. Try node server.cjs --port 8788` : e.message); process.exitCode=1; });
+  server.on('error', e => { customerServer.close();console.error(e.code === 'EADDRINUSE' ? `Port ${port} is in use. Try node server.cjs --port 8788` : e.message); process.exitCode=1; });
 }
 module.exports = { createApp, validateAutograph, cartItems };
