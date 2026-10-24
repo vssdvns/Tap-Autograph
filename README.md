@@ -72,3 +72,7 @@ Import photos, memes and transparent PNG stickers, remove a plain background loc
 ## Compact checkout and favorite emotes (0.11)
 
 See [compact checkout](docs/COMPACT-CHECKOUT.md) for the floating tap card, blue payment check, automatic NFC autograph, six-slot favorites wheel, cold-start fix and transfer improvements. Install the updated app and Reader Kit; no ESP32 reflash. Samsung launch behavior still needs on-device verification.
+
+## Tap polish (0.12)
+
+[Payment chime and cursor-style autograph dial](docs/TAP-POLISH.md): once-per-order acceptance feedback, a small draggable selector after payment, optional sound/haptics, and clearer Samsung unlock/retap wording. App-only update; existing reader firmware and bridge remain compatible.

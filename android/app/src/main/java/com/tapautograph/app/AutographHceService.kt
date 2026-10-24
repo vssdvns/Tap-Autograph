@@ -53,7 +53,7 @@ class AutographHceService : HostApduService() {
             }
         }.start()
     }
-    override fun onCreate(){super.onCreate();if(WalletTap.enabled(this))loadPacket()}
+    override fun onCreate(){super.onCreate();CheckoutFeedback.warmUp(this);if(WalletTap.enabled(this))loadPacket()}
     private fun declined()=byteArrayOf(0x69,0x85.toByte())
     override fun processCommandApdu(commandApdu:ByteArray,extras:Bundle?):ByteArray? {
         if(!unlocked()){
@@ -81,6 +81,7 @@ class AutographHceService : HostApduService() {
         }
         val response=if(card.active)card.process(cmd) else AutographSharing.card.process(cmd)
         val phase=card.state()
+        if(card.claimPaymentFeedback())CheckoutFeedback.payment(this)
         // Wait for a valid order offer, rather than showing UI for a mere AID probe.
         if(card.active && phase in 1..4){
             if(phase!=notifiedPhase){if(!TapActivity.visible)TapNotice.show(this,phase);notifiedPhase=phase}

@@ -54,6 +54,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        CheckoutFeedback.warmUp(this)
         val wallet = ViewModelProvider(this)[WalletViewModel::class.java]
         if (savedInstanceState == null) intent?.dataString?.let(wallet::preparePairing)
         setContent { WalletApp(wallet) }
@@ -424,6 +425,15 @@ private fun date(time: Long): String = SimpleDateFormat("MMM d, h:mm a", Locale.
             Row(verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text("Reduced motion"); Text("Show completed handwriting instantly", style = MaterialTheme.typography.bodySmall) }; Switch(checked = data.preferences.reducedMotion, onCheckedChange = { vm.preferences(data.preferences.copy(reducedMotion = it)) }) }
         }
         Block {
+            val feedbackContext=androidx.compose.ui.platform.LocalContext.current
+            var chime by remember{mutableStateOf(WalletTap.sound(feedbackContext))}
+            var tapHaptics by remember{mutableStateOf(WalletTap.haptics(feedbackContext))}
+            Text("Tap feedback",style=MaterialTheme.typography.titleLarge)
+            Row(verticalAlignment=Alignment.CenterVertically){Text("Payment chime",Modifier.weight(1f));Switch(checked=chime,onCheckedChange={chime=it;WalletTap.sound(feedbackContext,it)})}
+            Row(verticalAlignment=Alignment.CenterVertically){Text("Tap & dial haptics",Modifier.weight(1f));Switch(checked=tapHaptics,onCheckedChange={tapHaptics=it;WalletTap.haptics(feedbackContext,it)})}
+            Text("The chime follows your phone's notification volume and Do Not Disturb settings.",style=MaterialTheme.typography.bodySmall)
+        }
+        Block {
             Text("Your data", style = MaterialTheme.typography.titleLarge)
             Text("Handwriting is stored in this app's private storage on this device and excluded from app backup. Connected checkout sends handwriting only after you choose to share it, to your laptop over local Wi-Fi HTTP. The relay removes its copy on completion, cancellation, or expiry. Local storage is not separately encrypted by the app.", style = MaterialTheme.typography.bodyMedium)
             OutlinedButton(onClick = { confirmation = "autograph" }, Modifier.fillMaxWidth(), enabled = data.autograph != null) { Text("Delete selected design") }
@@ -431,7 +441,7 @@ private fun date(time: Long): String = SimpleDateFormat("MMM d, h:mm a", Locale.
             TextButton(onClick = { confirmation = "reset" }, Modifier.fillMaxWidth()) { Text("Reset all demo data") }
         }
         Block {
-            Text("Tap Autograph / 0.11", style = MaterialTheme.typography.titleLarge)
+            Text("Tap Autograph / 0.12", style = MaterialTheme.typography.titleLarge)
             Text("An independent Samsung Wallet-inspired interaction concept. Not affiliated with Samsung or Google. All cards, purchases, and payment interactions are fictional. Payments are simulated. The custom NFC reader transfers compact autograph artwork; it does not connect to bank cards or commercial payment terminals. Optional QR pairing connects to your local merchant relay.")
             Text("Built around your handwriting ✦", color = MaterialTheme.colorScheme.primary)
         }

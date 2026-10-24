@@ -2,8 +2,6 @@ package com.tapautograph.app
 
 import android.app.Activity
 import android.content.ComponentName
-import android.media.ToneGenerator
-import android.media.AudioManager
 import android.nfc.NfcAdapter
 import android.nfc.cardemulation.CardEmulation
 import androidx.compose.animation.core.animateFloatAsState
@@ -51,10 +49,7 @@ import kotlinx.coroutines.delay
         }
     }
     LaunchedEffect(phase){
-        if(phase==2||phase==5){
-            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-            runCatching{ToneGenerator(AudioManager.STREAM_NOTIFICATION,55).let{it.startTone(ToneGenerator.TONE_PROP_ACK,140);delay(180);it.release()}}
-        }
+        if(phase==5 && WalletTap.haptics(context))haptic.performHapticFeedback(HapticFeedbackType.LongPress)
         if(phase==5){delay(2200);card.stop();WalletTap.cooldown();back()}
     }
     val scale by animateFloatAsState(if(phase==2||phase==5)1f else .88f,tween(if(data.preferences.reducedMotion)0 else 450),label="tap pulse")

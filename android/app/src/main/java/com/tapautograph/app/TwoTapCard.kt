@@ -13,6 +13,8 @@ class TwoTapCard(private val now:()->Long={System.nanoTime()/1_000_000}) {
     private var automatic=false
     private var cardIndex=0
     private var autographDeadline=0L
+    private var feedbackPending=false
+    private var feedbackClaimed=false
     @Volatile var timedOut=false; private set
     @Volatile var active=false; private set
     @Synchronized fun start(packet:ByteArray, autoShare:Boolean=false, selectedCard:Int=0) { CompactInkCodec.decode(packet);stop();timedOut=false;automatic=autoShare;cardIndex=selectedCard.coerceIn(0,1);bytes=packet.copyOf();active=true;deadline=now()+180000 }
@@ -21,11 +23,15 @@ class TwoTapCard(private val now:()->Long={System.nanoTime()/1_000_000}) {
         expire();if(!active || phase !in 0..2)return false
         CompactInkCodec.decode(packet);bytes.fill(0);bytes=packet.copyOf();return true
     }
+    @Synchronized fun claimPaymentFeedback():Boolean {
+        expire();if(!active || !feedbackPending || feedbackClaimed)return false
+        feedbackClaimed=true;return true
+    }
     fun progress():Float=ink.progress()
-    @Synchronized fun stop(){ink.disarm();bytes.fill(0);bytes=byteArrayOf();binding=byteArrayOf();active=false;phase=0;deadline=0;autographDeadline=0;selected=false;acceptedOffer=false;amount=0}
+    @Synchronized fun stop(){ink.disarm();bytes.fill(0);bytes=byteArrayOf();binding=byteArrayOf();active=false;phase=0;deadline=0;autographDeadline=0;selected=false;acceptedOffer=false;amount=0;feedbackPending=false;feedbackClaimed=false}
     private fun expire(){if(active&&(now()>=deadline || (autographDeadline>0&&now()>=autographDeadline))){stop();timedOut=true}}
     @Synchronized fun remainingSeconds():Long {expire();return if(autographDeadline>0)((autographDeadline-now()+999)/1000).coerceAtLeast(0) else 0}
-    private fun paymentAccepted(){if(automatic&&autographDeadline==0L)autographDeadline=now()+45000}
+    private fun paymentAccepted(){feedbackPending=true;if(automatic&&autographDeadline==0L)autographDeadline=now()+45000}
     @Synchronized fun state():Int {expire();if(phase==4){if(ink.status()=="Transfer acknowledged by reader"){phase=5;bytes.fill(0);bytes=byteArrayOf()}else if(ink.remainingSeconds()==0L)stop()};return phase}
     @Synchronized fun total():Long=amount
     @Synchronized fun approve(){expire();if(active&&phase==3){ink.arm(bytes);phase=4}}

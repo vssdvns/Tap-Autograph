@@ -17,6 +17,10 @@ object WalletTap {
     private fun prefs(context:Context)=context.getSharedPreferences("wallet-tap",Context.MODE_PRIVATE)
     fun enabled(context:Context)=prefs(context).getBoolean("automatic",false)
     fun enable(context:Context,value:Boolean){prefs(context).edit().putBoolean("automatic",value).apply();if(!value){AutographSharing.checkout.stop();TapNotice.clear(context)}}
+    fun sound(context:Context)=prefs(context).getBoolean("chime",true)
+    fun sound(context:Context,value:Boolean){prefs(context).edit().putBoolean("chime",value).apply()}
+    fun haptics(context:Context)=prefs(context).getBoolean("tap-haptics",true)
+    fun haptics(context:Context,value:Boolean){prefs(context).edit().putBoolean("tap-haptics",value).apply()}
     fun favorites(context:Context)=prefs(context).getString("favorites","")!!.split("|").filter{it.isNotBlank()}.take(6)
     fun favorite(context:Context,id:String):Boolean {
         val next=favorites(context).toMutableList()

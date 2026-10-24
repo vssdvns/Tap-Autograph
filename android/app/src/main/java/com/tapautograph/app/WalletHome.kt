@@ -62,7 +62,7 @@ import kotlinx.coroutines.delay
                 }
                 Block{
                     Text(if(defaultWallet)"Default wallet selected" else "Tap without opening the wallet",style=MaterialTheme.typography.titleMedium)
-                    Text("Android handles unlocking. Your Samsung may ask you to unlock and tap again. Keep the screen awake for testing.")
+                    Text("Android handles unlocking. Your Samsung may ask you to unlock and tap again. The system may show “Tap again” after unlock—bring the phone back to the reader. Keep the screen awake for testing.")
                     if(!defaultWallet)OutlinedButton(onClick={runCatching{WalletTap.requestDefault(context as Activity)}.onFailure{message="Open Settings → Apps → Default apps → Wallet."}},modifier=Modifier.fillMaxWidth()){Text("Choose default wallet")}
                     Text("Selecting this demo replaces your current default wallet. Switch back to Google Wallet or Samsung Wallet for real purchases.",style=MaterialTheme.typography.bodySmall)
                     TextButton(onClick={context.startActivity(Intent(Settings.ACTION_NFC_SETTINGS))}){Text("NFC settings")}

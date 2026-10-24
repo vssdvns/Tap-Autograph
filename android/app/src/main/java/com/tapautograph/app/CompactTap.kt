@@ -30,14 +30,13 @@ import kotlinx.coroutines.withContext
     val context=LocalContext.current;val haptic=LocalHapticFeedback.current;val card=AutographSharing.checkout
     var phase by remember{mutableIntStateOf(card.state())};var seconds by remember{mutableLongStateOf(0)}
     var total by remember{mutableLongStateOf(card.total())};var progress by remember{mutableFloatStateOf(0f)}
-    var wheel by remember{mutableStateOf(false)};var chosen by remember{mutableStateOf(data.autograph)}
+    var chosen by remember{mutableStateOf(data.autograph)}
     var choosing by remember{mutableStateOf(false)};var pendingInk by remember{mutableStateOf<Autograph?>(null)}
     var message by remember{mutableStateOf("")};var tick by remember{mutableStateOf(false)}
     val reduced=data.preferences.reducedMotion
     LaunchedEffect(Unit){
         while(true){
             phase=card.state();seconds=card.remainingSeconds();total=card.total();progress=card.progress()
-            if(phase>=4)wheel=false
             if(card.timedOut){WalletTap.cooldown();TapNotice.clear(context);onClose();break}
             if(!card.active){onClose();break}
             delay(60)
@@ -47,24 +46,21 @@ import kotlinx.coroutines.withContext
         val ink=pendingInk ?: return@LaunchedEffect
         choosing=true
         runCatching{withContext(Dispatchers.Default){TapPacket.encode(ink)}}.onSuccess{
-            if(card.choose(it)){chosen=ink;message="";haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)}
+            if(card.choose(it)){chosen=ink;message="";if(WalletTap.haptics(context))haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)}
             else message="Transfer has started. Your previous selection is being sent."
         }.onFailure{message="Could not prepare this design."}
         choosing=false;pendingInk=null
     }
     LaunchedEffect(phase){
-        if(phase==2 || phase==5){haptic.performHapticFeedback(HapticFeedbackType.LongPress)}
-        if(phase>=2 && !tick){tick=true}
+        if(phase==5 && WalletTap.haptics(context)){haptic.performHapticFeedback(HapticFeedbackType.LongPress)}
+        if(phase in 2..5 && !tick){tick=true}
         if(phase==5 || phase==6){TapNotice.clear(context);WalletTap.cooldown();delay(if(reduced)700 else 1800);onClose()}
     }
     // Payment ACK drives the check, never an optimistic animation before acceptance.
     var showCheck by remember{mutableStateOf(false)}
     LaunchedEffect(tick){if(tick){
         showCheck=true
-        runCatching{android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION,45).let{tone->
-            try{tone.startTone(android.media.ToneGenerator.TONE_PROP_ACK,100);delay(120)}finally{tone.release()}
-        }}
-        delay(if(reduced)80 else 730);showCheck=false
+        delay(if(reduced)200 else 850);showCheck=false
     }}
     val accent by animateColorAsState(if(phase==5)Color(0xFF75E1B7) else Color(0xFF84B4FF),tween(if(reduced)0 else 350),label="checkout colour")
     val pulse=rememberInfiniteTransition(label="tap halo")
@@ -72,14 +68,14 @@ import kotlinx.coroutines.withContext
     Column(Modifier.fillMaxWidth().heightIn(max=680.dp).verticalScroll(rememberScrollState()).padding(24.dp).navigationBarsPadding(),verticalArrangement=Arrangement.spacedBy(14.dp),horizontalAlignment=Alignment.CenterHorizontally){
         Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text("TAP AUTOGRAPH",Modifier.weight(1f),style=MaterialTheme.typography.labelMedium,letterSpacing=2.sp);TextButton(onClick=onClose){Text("Hide")}}
         AnimatedContent(targetState=if(showCheck)"check" else if(phase<2)"card" else if(phase==5)"done" else "ink",transitionSpec={fadeIn(tween(if(reduced)0 else 220)) togetherWith fadeOut(tween(if(reduced)0 else 150))},label="tap stage"){stage->
-            Box(Modifier.fillMaxWidth().height(168.dp),contentAlignment=Alignment.Center){
+            Box(Modifier.fillMaxWidth().height(if(stage=="ink")44.dp else 168.dp),contentAlignment=Alignment.Center){
                 when(stage){
                     "card"->Column(Modifier.fillMaxWidth(.92f).height(158.dp).clip(RoundedCornerShape(24.dp)).background(Brush.linearGradient(listOf(Color(0xFF387BF0),Color(0xFF203B73)))).padding(22.dp),verticalArrangement=Arrangement.SpaceBetween){
                         Text(demoCards[WalletTap.selectedCard(context)].title,color=Color.White,fontSize=23.sp)
                         Text("••••  "+demoCards[WalletTap.selectedCard(context)].digits,color=Color.White,fontSize=21.sp)
                     }
                     "check","done"->Box(Modifier.size(130.dp).scale(if(reduced)1f else halo).background(if(stage=="done")Color(0xFF18795C) else Color(0xFF2764E7),CircleShape),contentAlignment=Alignment.Center){Text("✓",color=Color.White,fontSize=70.sp)}
-                    else->chosen?.let{InkPanel(it,138)} ?: Text("Your autograph",color=accent)
+                    else->Text(if(phase==4)"↗" else "✦",color=accent,fontSize=32.sp)
                 }
             }
         }
@@ -91,10 +87,13 @@ import kotlinx.coroutines.withContext
             LinearProgressIndicator(progress={seconds/45f},modifier=Modifier.fillMaxWidth())
             Text("${seconds}s left · Sharing is optional",style=MaterialTheme.typography.labelMedium)
         }
-        if(phase in 0..2){OutlinedButton(onClick={wheel=true},enabled=!choosing){Text(if(choosing)"Preparing…" else "✦  Favorite emotes")}}
+        if(phase in 2..4 && !showCheck){
+            AutographDial(data,chosen,enabled=phase==2 && !choosing,remainingFraction=if(phase==2)seconds/45f else null){ink->pendingInk=ink}
+            val title=data.gallery.firstOrNull{it.ink.id==chosen?.id}?.title ?: "Default autograph"
+            Text(if(choosing)"Preparing your selection…" else title,style=MaterialTheme.typography.labelMedium)
+        }
         if(message.isNotBlank())Text(message,style=MaterialTheme.typography.bodySmall)
         if(phase in 2..4)TextButton(onClick={card.skip();WalletTap.cooldown();TapNotice.clear(context);onClose()}){Text("Skip autograph")}
         Text("Demo only · No money moves",style=MaterialTheme.typography.labelSmall)
     }
-    if(wheel)FavoriteWheel(data,onDismiss={wheel=false}){ink->wheel=false;pendingInk=ink}
 }
