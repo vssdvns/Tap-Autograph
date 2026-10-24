@@ -1,6 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.NFC"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-feature android:name="android.hardware.nfc.hce" android:required="false"/>
     <application android:usesCleartextTraffic="true" android:theme="@style/Theme.TapAutograph" android:label="@string/app_name" android:icon="@drawable/ic_autograph" android:allowBackup="false" android:fullBackupContent="false" android:dataExtractionRules="@xml/data_extraction_rules" android:supportsRtl="true">
         <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.studio-files" android:exported="false" android:grantUriPermissions="true">
@@ -10,6 +11,7 @@
             <intent-filter><action android:name="android.nfc.cardemulation.action.HOST_APDU_SERVICE"/></intent-filter>
             <meta-data android:name="android.nfc.cardemulation.host_apdu_service" android:resource="@xml/autograph_hce"/>
         </service>
+        <activity android:name=".TapActivity" android:exported="false" android:launchMode="singleTask" android:taskAffinity="com.tapautograph.tap" android:excludeFromRecents="true" android:theme="@style/Theme.TapAutograph.Compact"/>
         <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop">
             <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
             <intent-filter>

@@ -68,3 +68,7 @@ Cashier on port 8787, paired customer display on port 8788. Live cart updates, c
 ## Photo & Meme importer (Android 0.10)
 
 Import photos, memes and transparent PNG stickers, remove a plain background locally, and choose Sticker, Outline, Photo dots or Paper ink. Includes crop/rotate, tolerance controls, NFC artwork and receipt previews. [Usage and limitations](docs/PHOTO-MEME.md). Existing merchant/reader versions work unchanged.
+
+## Compact checkout and favorite emotes (0.11)
+
+See [compact checkout](docs/COMPACT-CHECKOUT.md) for the floating tap card, blue payment check, automatic NFC autograph, six-slot favorites wheel, cold-start fix and transfer improvements. Install the updated app and Reader Kit; no ESP32 reflash. Samsung launch behavior still needs on-device verification.

@@ -16,11 +16,19 @@ object WalletTap {
     @Volatile var designRevision=0L
     private fun prefs(context:Context)=context.getSharedPreferences("wallet-tap",Context.MODE_PRIVATE)
     fun enabled(context:Context)=prefs(context).getBoolean("automatic",false)
-    fun enable(context:Context,value:Boolean){prefs(context).edit().putBoolean("automatic",value).apply();if(!value)AutographSharing.checkout.stop()}
+    fun enable(context:Context,value:Boolean){prefs(context).edit().putBoolean("automatic",value).apply();if(!value){AutographSharing.checkout.stop();TapNotice.clear(context)}}
+    fun favorites(context:Context)=prefs(context).getString("favorites","")!!.split("|").filter{it.isNotBlank()}.take(6)
+    fun favorite(context:Context,id:String):Boolean {
+        val next=favorites(context).toMutableList()
+        if(!next.remove(id)){if(next.size>=6)return false;next.add(id)}
+        prefs(context).edit().putString("favorites",next.joinToString("|")).apply();return true
+    }
+    fun forgetFavorite(context:Context,id:String){prefs(context).edit().putString("favorites",favorites(context).filterNot{it==id}.joinToString("|")).apply()}
+    fun clearFavorites(context:Context){prefs(context).edit().remove("favorites").apply()}
     fun selectedCard(context:Context)=prefs(context).getInt("selected-card",0).coerceIn(0,1)
     fun selectCard(context:Context,index:Int){prefs(context).edit().putInt("selected-card",index.coerceIn(0,1)).apply()}
     @Volatile private var blockedUntil=0L
-    fun cooldown(){blockedUntil=SystemClock.elapsedRealtime()+60000}
+    fun cooldown(){blockedUntil=SystemClock.elapsedRealtime()+1500}
     fun canStart()=SystemClock.elapsedRealtime()>=blockedUntil
     fun resetCooldown(){blockedUntil=0L}
     fun isDefault(context:Context):Boolean=runCatching {

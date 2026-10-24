@@ -41,3 +41,7 @@ Phone completion means the merchant server accepted the ink; the merchant browse
 ## Separate cashier and customer displays
 
 Open http://localhost:8787 for the cashier. Use its Open customer display link to pair port 8788, then move that window to your portable monitor. For another browser device, select the laptop Wi-Fi address before copying the link. See [DUAL-DISPLAY.md](DUAL-DISPLAY.md). No ESP32 reflash or phone APK update is required.
+
+## App 0.11 compact checkout
+
+The updated bridge throttles progress events and reports transfer duration. Replace this kit folder for the speed update; keep the existing ESP32 firmware and wiring. See `COMPACT-CHECKOUT.md` for the floating phone card, emote wheel and device test steps.

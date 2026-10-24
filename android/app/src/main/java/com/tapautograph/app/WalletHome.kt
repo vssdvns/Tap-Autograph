@@ -38,6 +38,9 @@ import kotlinx.coroutines.delay
     var enabled by remember{mutableStateOf(WalletTap.enabled(context))}
     var defaultWallet by remember{mutableStateOf(WalletTap.isDefault(context))}
     var consent by remember{mutableStateOf(false)}
+    var wheel by remember{mutableStateOf(false)}
+    var notificationsAllowed by remember{mutableStateOf(android.os.Build.VERSION.SDK_INT<33 || androidx.core.content.ContextCompat.checkSelfPermission(context,android.Manifest.permission.POST_NOTIFICATIONS)==android.content.pm.PackageManager.PERMISSION_GRANTED)}
+    val notifications=androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()){notificationsAllowed=it}
     var message by remember{mutableStateOf("")}
     LaunchedEffect(Unit){vm.selectedCard.value=WalletTap.selectedCard(context);while(true){defaultWallet=WalletTap.isDefault(context);delay(1000)}}
     Column(Modifier.fillMaxSize().safeDrawingPadding()){
@@ -52,12 +55,13 @@ import kotlinx.coroutines.delay
                     Text("First tap: demo payment. Then tap again to share your saved autograph automatically. You have 45 seconds, or simply walk away.")
                     Row(verticalAlignment=Alignment.CenterVertically){Text("Automatic autograph",Modifier.weight(1f));Switch(checked=enabled,onCheckedChange={if(it)consent=true else{enabled=false;WalletTap.enable(context,false)}})}
                     if(!enabled)Primary("Enable tap-ready wallet",enabled=data.autograph!=null){consent=true}
-                    if(enabled)Primary("Open tap screen"){
-                        try{require(NfcAdapter.getDefaultAdapter(context)?.isEnabled==true){"Turn on NFC first."};WalletTap.resetCooldown();AutographSharing.checkout.start(CompactInkCodec.encode(requireNotNull(data.autograph)),autoShare=true,selectedCard=selected);navigate("two-tap")}catch(e:Exception){message=e.message?:"Choose a saved autograph first."}
+                    if(enabled && !notificationsAllowed)TextButton(onClick={notifications.launch(android.Manifest.permission.POST_NOTIFICATIONS)}){Text("Allow tap notifications")}
+                    if(enabled)Primary("Preview tap card"){
+                        try{require(NfcAdapter.getDefaultAdapter(context)?.isEnabled==true){"Turn on NFC first."};WalletTap.resetCooldown();AutographSharing.checkout.start(TapPacket.encode(requireNotNull(data.autograph)),autoShare=true,selectedCard=selected);context.startActivity(Intent(context,TapActivity::class.java))}catch(e:Exception){message=e.message?:"Choose a saved autograph first."}
                     }
                 }
                 Block{
-                    Text(if(defaultWallet)"Default wallet selected" else "Use from the lock screen",style=MaterialTheme.typography.titleMedium)
+                    Text(if(defaultWallet)"Default wallet selected" else "Tap without opening the wallet",style=MaterialTheme.typography.titleMedium)
                     Text("Android handles unlocking. Your Samsung may ask you to unlock and tap again. Keep the screen awake for testing.")
                     if(!defaultWallet)OutlinedButton(onClick={runCatching{WalletTap.requestDefault(context as Activity)}.onFailure{message="Open Settings → Apps → Default apps → Wallet."}},modifier=Modifier.fillMaxWidth()){Text("Choose default wallet")}
                     Text("Selecting this demo replaces your current default wallet. Switch back to Google Wallet or Samsung Wallet for real purchases.",style=MaterialTheme.typography.bodySmall)
@@ -66,6 +70,7 @@ import kotlinx.coroutines.delay
                 if(message.isNotEmpty())Text(message)
                 Text("Your autograph",style=MaterialTheme.typography.titleLarge)
                 data.autograph?.let{InkPanel(it,110)}?:Text("Create or select an autograph in the Studio tab.")
+                OutlinedButton(onClick={wheel=true},modifier=Modifier.fillMaxWidth()){Text("✦  Favorite emote wheel")}
                 OutlinedButton(onClick={navigate("gallery")},modifier=Modifier.fillMaxWidth()){Text("Choose autograph")}
                 Text("Independent prototype · Demo payments only",style=MaterialTheme.typography.bodySmall)
             }else Page("Make it yours","AUTOGRAPH STUDIO"){
@@ -85,7 +90,8 @@ import kotlinx.coroutines.delay
             NavigationBarItem(selected=tab==1,onClick={tab=1},icon={Icon(Icons.Rounded.Draw,null)},label={Text("Studio")})
         }
     }
-    if(consent)AlertDialog(onDismissRequest={consent=false},title={Text("Let your next tap share it")},text={Text("After a demo payment is accepted, presenting your phone again sends the selected autograph without another confirmation. The window lasts 45 seconds. This works only with our prototype reader; no real money moves. You can turn it off here anytime.")},confirmButton={TextButton(onClick={enabled=true;WalletTap.enable(context,true);WalletTap.resetCooldown();consent=false}){Text("Enable")}},dismissButton={TextButton(onClick={consent=false}){Text("Not now")}})
+    if(wheel)FavoriteWheel(data,sessionOnly=false,onDismiss={wheel=false}){ink->vm.selectDesign(ink.id);wheel=false}
+    if(consent)AlertDialog(onDismissRequest={consent=false},title={Text("Let your next tap share it")},text={Text("After a demo payment is accepted, presenting your phone again sends the selected autograph without another confirmation. The window lasts 45 seconds. This works only with our prototype reader; no real money moves. You can turn it off here anytime.")},confirmButton={TextButton(onClick={if(android.os.Build.VERSION.SDK_INT>=33)notifications.launch(android.Manifest.permission.POST_NOTIFICATIONS);enabled=true;WalletTap.enable(context,true);WalletTap.resetCooldown();consent=false}){Text("Enable")}},dismissButton={TextButton(onClick={consent=false}){Text("Not now")}})
 }
 
 @Composable private fun WalletCardStack(selected:Int,reducedMotion:Boolean,onSelect:(Int)->Unit){

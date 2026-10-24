@@ -58,6 +58,18 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null) intent?.dataString?.let(wallet::preparePairing)
         setContent { WalletApp(wallet) }
     }
+    override fun onResume(){
+        super.onResume()
+        if(WalletTap.enabled(this))runCatching {
+            android.nfc.NfcAdapter.getDefaultAdapter(this)?.let { adapter ->
+                android.nfc.cardemulation.CardEmulation.getInstance(adapter).setPreferredService(this,android.content.ComponentName(this,AutographHceService::class.java))
+            }
+        }
+    }
+    override fun onPause(){
+        runCatching{android.nfc.NfcAdapter.getDefaultAdapter(this)?.let{android.nfc.cardemulation.CardEmulation.getInstance(it).unsetPreferredService(this)}}
+        super.onPause()
+    }
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -79,9 +91,16 @@ class MainActivity : ComponentActivity() {
                 val nav = rememberNavController()
                 val offer by vm.pairOffer.collectAsStateWithLifecycle()
                 LaunchedEffect(Unit) {
+                    var shown=false
                     while(true){
                         val phase=AutographSharing.checkout.state()
-                        if(phase in 1..4 && nav.currentDestination?.route!="two-tap")nav.navigate("two-tap"){launchSingleTop=true}
+                        if(phase==0)shown=false
+                        if(nav.currentDestination?.route!="two-tap" && phase in 1..4 && !shown && !TapActivity.visible && !TapActivity.hidden){
+                            shown=true
+                            vm.getApplication<android.app.Application>().let { app ->
+                                app.startActivity(Intent(app,TapActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+                            }
+                        }
                         kotlinx.coroutines.delay(150)
                     }
                 }
@@ -412,8 +431,8 @@ private fun date(time: Long): String = SimpleDateFormat("MMM d, h:mm a", Locale.
             TextButton(onClick = { confirmation = "reset" }, Modifier.fillMaxWidth()) { Text("Reset all demo data") }
         }
         Block {
-            Text("Tap Autograph Lab / 0.6", style = MaterialTheme.typography.titleLarge)
-            Text("An independent Samsung Wallet-inspired interaction concept. Not affiliated with Samsung or Google. All cards, purchases, and payment interactions are fictional. No real payments, wallet integration, or NFC transfers are performed. QR pairing connects only to a local IPv4 HTTP relay.")
+            Text("Tap Autograph / 0.11", style = MaterialTheme.typography.titleLarge)
+            Text("An independent Samsung Wallet-inspired interaction concept. Not affiliated with Samsung or Google. All cards, purchases, and payment interactions are fictional. Payments are simulated. The custom NFC reader transfers compact autograph artwork; it does not connect to bank cards or commercial payment terminals. Optional QR pairing connects to your local merchant relay.")
             Text("Built around your handwriting ✦", color = MaterialTheme.colorScheme.primary)
         }
     }

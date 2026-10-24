@@ -24,6 +24,9 @@ import java.io.File
 import java.util.Locale
 
 @Composable fun StudioGallery(vm:WalletViewModel,data:SavedData,back:()->Unit,navigate:(String)->Unit,draw:()->Unit) {
+    val favoriteContext=LocalContext.current
+    var favoriteIds by remember{mutableStateOf(WalletTap.favorites(favoriteContext))}
+    var favoriteError by remember{mutableStateOf(false)}
     var editing by remember { mutableStateOf<StudioDesign?>(null) };var name by rememberSaveable { mutableStateOf("") }
     var deleting by remember { mutableStateOf<StudioDesign?>(null) }
     Page("Your mark.\nEvery mood.","AUTOGRAPH GALLERY",back) {
@@ -42,6 +45,11 @@ import java.util.Locale
             key(entry.ink.id) { Block {
                 Text(entry.title,style=MaterialTheme.typography.titleLarge)
                 Text(when(entry.source){"name"->"Name design";"photo"->"Photo / paper artwork";"doodle"->"Mood doodle";else->"Handwritten"},style=MaterialTheme.typography.bodySmall)
+                TextButton(onClick={
+                    favoriteError=!WalletTap.favorite(favoriteContext,entry.ink.id)
+                    favoriteIds=WalletTap.favorites(favoriteContext)
+                }){Text(if(entry.ink.id in favoriteIds)"★ Remove from emote wheel" else "☆ Add to emote wheel")}
+                if(favoriteError)Text("Your wheel holds six designs. Remove a favorite first.")
                 InkPanel(entry.ink,height=115)
                 Primary(if(data.autograph?.id==entry.ink.id) "Selected for screen & NFC" else "Use for screen & NFC",enabled=data.autograph?.id!=entry.ink.id) { vm.selectDesign(entry.ink.id) }
                 OutlinedButton(onClick={vm.selectReceiptDesign(entry.ink.id)},Modifier.fillMaxWidth()) { Text(if(data.receiptEnabled&&data.receiptDesignId==entry.ink.id) "Selected for receipt preview" else "Use for receipt preview") }
@@ -53,7 +61,7 @@ import java.util.Locale
         }
     }
     editing?.let { entry->AlertDialog(onDismissRequest={editing=null},title={Text("Name this design")},text={OutlinedTextField(value=name,onValueChange={name=it.take(40)},label={Text("Design name")},singleLine=true)},confirmButton={TextButton(enabled=name.isNotBlank(),onClick={vm.renameDesign(entry.ink.id,name);editing=null}){Text("Save")}},dismissButton={TextButton(onClick={editing=null}){Text("Cancel")}}) }
-    deleting?.let { entry->AlertDialog(onDismissRequest={deleting=null},title={Text("Delete ${entry.title}?")},text={Text("This removes the saved design. Earlier receipts may no longer display it.")},confirmButton={TextButton(onClick={vm.deleteDesign(entry.ink.id);deleting=null}){Text("Delete")}},dismissButton={TextButton(onClick={deleting=null}){Text("Cancel")}}) }
+    deleting?.let { entry->AlertDialog(onDismissRequest={deleting=null},title={Text("Delete ${entry.title}?")},text={Text("This removes the saved design. Earlier receipts may no longer display it.")},confirmButton={TextButton(onClick={vm.deleteDesign(entry.ink.id);favoriteIds=WalletTap.favorites(favoriteContext);deleting=null}){Text("Delete")}},dismissButton={TextButton(onClick={deleting=null}){Text("Cancel")}}) }
 }
 
 @Composable private fun InkPalette(selected:Long,choose:(Long)->Unit) {

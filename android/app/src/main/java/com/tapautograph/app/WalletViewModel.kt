@@ -106,13 +106,13 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
         if(title.trim().length !in 1..40)return
         update { it.copy(gallery=it.gallery.map { entry->if(entry.ink.id==id)entry.copy(title=title.trim())else entry }) }
     }
-    fun deleteDesign(id:String) { AutographSharing.card.disarm();update { it.removeStudioDesign(id) } }
+    fun deleteDesign(id:String) { WalletTap.forgetFavorite(getApplication(),id);AutographSharing.card.disarm();update { it.removeStudioDesign(id) } }
     fun deleteAutograph() { _data.value.autograph?.id?.let(::deleteDesign) }
     fun clearStudioPhoto() { studioPhoto.value=null }
 
     fun preferences(value: Preferences) = update { it.copy(preferences = value) }
     fun clearHistory() = update { it.copy(transactions = emptyList()) }
-    fun reset() { AutographSharing.card.disarm();studioPhoto.value=null;disconnectLive(); checkout.value = null; clearDraft(); selectedCard.value = 0; update { SavedData() } }
+    fun reset() { WalletTap.clearFavorites(getApplication());WalletTap.enable(getApplication(),false);WalletTap.selectCard(getApplication(),0);AutographSharing.card.disarm();studioPhoto.value=null;disconnectLive(); checkout.value = null; clearDraft(); selectedCard.value = 0; update { SavedData() } }
     fun beginCheckout() { checkout.value = Checkout(card = selectedCard.value) }
     fun simulatePayment() {
         val session = checkout.value ?: return
