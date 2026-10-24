@@ -1,0 +1,1 @@
+{"name": "Tap_PN532_SPI", "version": "1.3.4-tap1", "dependencies": {"adafruit/Adafruit BusIO": "1.17.2"}}

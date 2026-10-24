@@ -1,0 +1,11 @@
+'use strict';
+const uuid=()=>{const b=crypto.getRandomValues(new Uint8Array(16));b[6]=(b[6]&15)|64;b[8]=(b[8]&63)|128;const h=Array.from(b,x=>x.toString(16).padStart(2,'0')).join('');return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;};
+let id,token,claimId=uuid(),busy=false;
+const $=s=>document.querySelector(s);
+const ink={schema:1,id:'generated-demo-ink',aspect:1.8,color:0xff18365f,width:.009,strokes:[{points:[[.18,.65],[.24,.25],[.23,.55],[.32,.43],[.34,.63],[.42,.54]].map((p,i)=>({x:p[0],y:p[1],time:i*120,pressure:1,tool:2}))},{points:[{x:.48,y:.40,time:900,pressure:1,tool:2},{x:.46,y:.64,time:1100,pressure:1,tool:2},{x:.57,y:.57,time:1250,pressure:1,tool:2}]},{points:[{x:.49,y:.27,time:1600,pressure:1,tool:2}]}]};
+async function req(suffix,body,bearer=token){const r=await fetch(`/api/phone/${id}${suffix}`,{method:body===undefined?'GET':'POST',headers:{Authorization:'Bearer '+bearer,...(body===undefined?{}:{'Content-Type':'application/json'})},body:body===undefined?undefined:JSON.stringify(body)});const d=await r.json();if(!r.ok)throw Error(d.error);return d;}
+function status(s){$('#testStatus').textContent=`${s.merchant} · ${s.stage} · $${(s.total/100).toFixed(2)}`;$('#payTest').disabled=busy||s.stage!=='paired';$('#shareTest').disabled=busy||s.stage!=='autograph';$('#skipTest').disabled=busy||s.stage!=='autograph';}
+$('#pairTest').onclick=async()=>{try{const u=new URL($('#testLink').value);const p=new URLSearchParams(u.hash.slice(1));const next=p.get('id');if(next!==id){claimId=uuid();token=null;}id=next;const d=await req('/claim',{claimId},p.get('token'));token=d.deviceToken;status(d.checkout);}catch(e){$('#testStatus').textContent=e.message;}};
+async function action(action){if(busy)return;busy=true;try{const result=await req('/action',{action,card:0,autograph:ink,speed:1,reducedMotion:false});busy=false;status(result);}catch(e){busy=false;$('#testStatus').textContent=e.message;}}
+$('#payTest').onclick=()=>action('pay');$('#shareTest').onclick=()=>action('share');$('#skipTest').onclick=()=>action('skip');
+setInterval(async()=>{if(!id||!token||busy)return;try{status(await req(''));}catch(e){$('#testStatus').textContent=e.message;}},900);

@@ -1,0 +1,1 @@
+{"schema":1,"id":"test-source","aspect":1.8,"strokes":[{"points":[{"x":0.1,"y":0.2,"time":150,"pressure":0.4,"tool":2},{"x":0.3,"y":0.7,"time":187,"pressure":1.2,"tool":2},{"x":0.2,"y":0.4,"time":230,"pressure":0.8,"tool":2}]},{"points":[{"x":0.8,"y":0.3,"time":15000,"pressure":1.0,"tool":1}]}],"color":4279776863,"width":0.006}
