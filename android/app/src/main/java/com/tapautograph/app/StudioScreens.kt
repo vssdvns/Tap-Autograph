@@ -6,6 +6,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -30,7 +32,7 @@ import java.util.Locale
             Detail("Saved designs","${data.gallery.size} / $MAX_DESIGNS")
             Primary("Draw with S Pen or finger",enabled=data.gallery.size<MAX_DESIGNS,onClick=draw)
             OutlinedButton(onClick={navigate("studio-name")},Modifier.fillMaxWidth()) { Text("Create from a name") }
-            OutlinedButton(onClick={vm.clearStudioPhoto();navigate("studio-photo")},Modifier.fillMaxWidth()) { Text("Import a paper signature") }
+            OutlinedButton(onClick={vm.clearStudioPhoto();navigate("studio-photo")},Modifier.fillMaxWidth()) { Text("Import photo or meme") }
             OutlinedButton(onClick={navigate("studio-doodles")},Modifier.fillMaxWidth()) { Text("Pick a mood doodle") }
         }
         OutlinedButton(onClick={navigate("nfc-lab")},enabled=data.autograph!=null,modifier=Modifier.fillMaxWidth()) { Text("Share selected design with NFC") }
@@ -39,7 +41,7 @@ import java.util.Locale
         data.gallery.forEach { entry ->
             key(entry.ink.id) { Block {
                 Text(entry.title,style=MaterialTheme.typography.titleLarge)
-                Text(when(entry.source){"name"->"Name design";"photo"->"Paper import · approximate playback";"doodle"->"Mood doodle";else->"Handwritten"},style=MaterialTheme.typography.bodySmall)
+                Text(when(entry.source){"name"->"Name design";"photo"->"Photo / paper artwork";"doodle"->"Mood doodle";else->"Handwritten"},style=MaterialTheme.typography.bodySmall)
                 InkPanel(entry.ink,height=115)
                 Primary(if(data.autograph?.id==entry.ink.id) "Selected for screen & NFC" else "Use for screen & NFC",enabled=data.autograph?.id!=entry.ink.id) { vm.selectDesign(entry.ink.id) }
                 OutlinedButton(onClick={vm.selectReceiptDesign(entry.ink.id)},Modifier.fillMaxWidth()) { Text(if(data.receiptEnabled&&data.receiptDesignId==entry.ink.id) "Selected for receipt preview" else "Use for receipt preview") }
@@ -131,11 +133,16 @@ import java.util.Locale
     var cameraPath by rememberSaveable { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) };var loading by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<PaperResult?>(null) };var processing by remember { mutableStateOf(false) }
-    var label by rememberSaveable { mutableStateOf("Paper autograph") };var color by rememberSaveable { mutableLongStateOf(studioColors[0]) }
+    var label by rememberSaveable { mutableStateOf("My photo autograph") };var color by rememberSaveable { mutableLongStateOf(studioColors[0]) }
     var left by rememberSaveable { mutableFloatStateOf(0f) };var right by rememberSaveable { mutableFloatStateOf(0f) }
     var top by rememberSaveable { mutableFloatStateOf(0f) };var bottom by rememberSaveable { mutableFloatStateOf(0f) }
     var turns by rememberSaveable { mutableIntStateOf(0) };var angle by rememberSaveable { mutableFloatStateOf(0f) }
     var threshold by rememberSaveable { mutableFloatStateOf(145f) };var cleanup by rememberSaveable { mutableFloatStateOf(8f) }
+    var style by rememberSaveable { mutableStateOf("sticker") }
+    var removeBackground by rememberSaveable { mutableStateOf(false) }
+    var tolerance by rememberSaveable { mutableFloatStateOf(45f) }
+    var corner by rememberSaveable { mutableIntStateOf(0) }
+    var invert by rememberSaveable { mutableStateOf(false) }
     var width by rememberSaveable { mutableFloatStateOf(.008f) };var replay by remember { mutableIntStateOf(0) }
     fun load(uri:Uri,temporary:File?=null) { scope.launch {
         loading=true;error=null;result=null;vm.clearStudioPhoto()
@@ -149,7 +156,7 @@ import java.util.Locale
         if(success && file!=null)load(FileProvider.getUriForFile(context,"${context.packageName}.studio-files",file),file)else file?.delete()
         cameraPath=null
     }
-    val controls=PhotoControls(left,top,right,bottom,turns,angle,threshold.toInt(),cleanup.toInt(),width)
+    val controls=PhotoControls(left,top,right,bottom,turns,angle,threshold.toInt(),cleanup.toInt(),width,style,removeBackground,tolerance.toInt(),corner,invert)
     LaunchedEffect(photo,controls,color) {
         result=null;if(photo==null)return@LaunchedEffect
         delay(300);processing=true;error=null
@@ -157,8 +164,8 @@ import java.util.Locale
         catch(e:CancellationException){throw e}catch(e:IllegalArgumentException){error=e.message ?: "Could not isolate the ink."}
         finally{processing=false}
     }
-    Page("From paper\nto a little magic.","PAPER IMPORT",back) {
-        Text("Use a close photo of dark ink on plain light paper. Crop away other text before saving.")
+    Page("Your photo.\nYour signature moment.","PHOTO & MEME",back) {
+        Text("Import a photo, meme, sticker, or paper signature. Preview the compact artwork that will reach the reader and receipt.")
         Primary("Choose a photo",enabled=!loading) { pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
         OutlinedButton(onClick={
             try {val folder=File(context.cacheDir,"studio-camera").apply { mkdirs() };val file=File.createTempFile("paper-",".jpg",folder);cameraPath=file.absolutePath;camera.launch(FileProvider.getUriForFile(context,"${context.packageName}.studio-files",file))}
@@ -166,7 +173,24 @@ import java.util.Locale
         },enabled=!loading,modifier=Modifier.fillMaxWidth()) { Text("Take a photo") }
         if(loading||processing)LinearProgressIndicator(Modifier.fillMaxWidth())
         photo?.let { original->
-            Image((result?.photo ?: original).asImageBitmap(),"Selected paper photo",Modifier.fillMaxWidth().heightIn(max=280.dp),contentScale=ContentScale.Fit)
+            Text("Photo preview · transparent areas appear grey",style=MaterialTheme.typography.labelMedium)
+            Image((result?.photo ?: original).asImageBitmap(),"Photo after crop and background removal",Modifier.fillMaxWidth().heightIn(max=280.dp).background(Color(0xFFE1E4E8)),contentScale=ContentScale.Fit)
+            Text("Artwork style",style=MaterialTheme.typography.titleMedium)
+            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                listOf("sticker" to "Sticker","dots" to "Photo dots").forEach { (key,title)->FilterChip(selected=style==key,onClick={style=key},label={Text(title)}) }
+            }
+            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                listOf("outline" to "Outline","paper" to "Paper ink").forEach { (key,title)->FilterChip(selected=style==key,onClick={style=key},label={Text(title)}) }
+            }
+            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) { Text("Remove background");Switch(checked=removeBackground,onCheckedChange={removeBackground=it}) }
+            if(removeBackground){
+                Text("Choose a corner containing the background colour. Matching regions connected to the image edge are erased. Works best on plain backgrounds; this is not AI subject detection.",style=MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("Top left","Top right").forEachIndexed { i,title->FilterChip(selected=corner==i,onClick={corner=i},label={Text(title)}) }}
+                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("Bottom left","Bottom right").forEachIndexed { i,title->FilterChip(selected=corner==i+2,onClick={corner=i+2},label={Text(title)}) }}
+                StudioSlider("Background tolerance · ${tolerance.toInt()}",tolerance,0f..140f){tolerance=it}
+                Text("Lower it if part of your subject disappears. Turn removal off to restore the original.",style=MaterialTheme.typography.bodySmall)
+            }
+            if(style!="paper")Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text("Invert artwork colours");Switch(checked=invert,onCheckedChange={invert=it})}
             OutlinedButton(onClick={turns=(turns+1)%4;left=0f;right=0f;top=0f;bottom=0f}) { Text("Rotate 90°") }
             StudioSlider("Straighten · ${angle.toInt()}°",angle,-15f..15f){angle=it}
             StudioSlider("Trim left · ${(left*100).toInt()}%",left,0f.. .45f){left=it}
@@ -174,21 +198,24 @@ import java.util.Locale
             StudioSlider("Trim top · ${(top*100).toInt()}%",top,0f.. .45f){top=it}
             StudioSlider("Trim bottom · ${(bottom*100).toInt()}%",bottom,0f.. .45f){bottom=it}
             StudioSlider("Ink threshold · ${threshold.toInt()}",threshold,40f..230f){threshold=it}
-            StudioSlider("Speckle cleanup · ${cleanup.toInt()}",cleanup,1f..40f){cleanup=it}
-            Text("Lower cleanup if a dot disappears. Increase the threshold if faint ink is missing.",style=MaterialTheme.typography.bodySmall)
-            StudioSlider("Line weight",width,.003f.. .025f){width=it}
+            if(style=="paper")StudioSlider("Speckle cleanup · ${cleanup.toInt()}",cleanup,1f..40f){cleanup=it}
+            Text(if(style=="paper")"Lower cleanup if a dot disappears. Increase the threshold if faint ink is missing." else "Photo dots keeps shading. Sticker keeps bold shapes. Detailed images are simplified to fit NFC.",style=MaterialTheme.typography.bodySmall)
+            if(style=="paper")StudioSlider("Line weight",width,.003f.. .025f){width=it}
             InkPalette(color){color=it}
         }
         error?.let { Text(it,color=MaterialTheme.colorScheme.error) }
         result?.let { processed ->
-            Text("Extracted ink",style=MaterialTheme.typography.titleLarge)
+            Text("NFC artwork preview",style=MaterialTheme.typography.titleLarge)
             AnimatedInk(processed.ink,data.preferences,replay)
-            OutlinedButton(onClick={replay++}) { Text("Replay extracted paths") }
-            Text("A photo cannot preserve pen order or speed. This reveal follows extracted paths with generated timing.",style=MaterialTheme.typography.bodySmall)
+            OutlinedButton(onClick={replay++}) { Text(if(style=="paper")"Replay extracted paths" else "Preview reveal") }
+            Text(if(style=="paper")"Paper photos use approximate paths with generated timing." else "Photo artwork appears as a quick reveal, rather than pretending it was handwritten.",style=MaterialTheme.typography.bodySmall)
+            Text("Receipt preview · black & white",style=MaterialTheme.typography.titleMedium)
+            val receipt=remember(processed.ink){ReceiptArt.render(processed.ink)}
+            Image(receipt.asImageBitmap(),"Black and white receipt preview",Modifier.fillMaxWidth().heightIn(max=220.dp),contentScale=ContentScale.Fit)
             OutlinedTextField(value=label,onValueChange={label=it.take(40)},label={Text("Save as")},singleLine=true,modifier=Modifier.fillMaxWidth())
-            Primary("Save & use paper autograph",enabled=!processing&&label.isNotBlank()) { if(vm.saveDesign(processed.ink,label,"photo")){vm.clearStudioPhoto();back()} }
+            Primary("Save & use artwork",enabled=!processing&&label.isNotBlank()) { if(vm.saveDesign(processed.ink,label,"photo")){vm.clearStudioPhoto();back()} }
         }
-        Text("Processing happens on this device. The gallery stores extracted ink; selected source photos are not copied into the gallery.",style=MaterialTheme.typography.bodySmall)
+        Text("Processing happens on this device. The gallery stores compact artwork; selected source photos are not copied into the gallery. No photo upload is needed.",style=MaterialTheme.typography.bodySmall)
     }
 }
 

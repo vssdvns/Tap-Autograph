@@ -73,7 +73,7 @@ import kotlinx.coroutines.delay
                 Primary("Your gallery"){navigate("gallery")}
                 OutlinedButton(onClick={navigate("studio-name")},modifier=Modifier.fillMaxWidth()){Text("Name styles")}
                 OutlinedButton(onClick={navigate("studio-doodles")},modifier=Modifier.fillMaxWidth()){Text("Mood doodles")}
-                OutlinedButton(onClick={navigate("studio-photo")},modifier=Modifier.fillMaxWidth()){Text("Import from paper")}
+                OutlinedButton(onClick={navigate("studio-photo")},modifier=Modifier.fillMaxWidth()){Text("Photo & meme importer")}
                 OutlinedButton(onClick={navigate("receipt-art")},modifier=Modifier.fillMaxWidth()){Text("Receipt artwork")}
                 Text("Developer tools",style=MaterialTheme.typography.titleMedium)
                 TextButton(onClick={navigate("live")}){Text("Wi-Fi merchant checkout")}

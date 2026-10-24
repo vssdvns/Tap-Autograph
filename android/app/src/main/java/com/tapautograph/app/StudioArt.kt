@@ -50,7 +50,7 @@ object DoodleArt {
     }
 }
 
-data class PhotoControls(val left:Float=0f,val top:Float=0f,val right:Float=0f,val bottom:Float=0f,val turns:Int=0,val angle:Float=0f,val threshold:Int=145,val speckle:Int=8,val width:Float=.008f)
+data class PhotoControls(val left:Float=0f,val top:Float=0f,val right:Float=0f,val bottom:Float=0f,val turns:Int=0,val angle:Float=0f,val threshold:Int=145,val speckle:Int=8,val width:Float=.008f,val style:String="paper",val removeBackground:Boolean=false,val backgroundTolerance:Int=45,val backgroundCorner:Int=0,val invert:Boolean=false)
 data class PaperResult(val photo:Bitmap,val ink:Autograph)
 object PhotoArt {
     fun load(context:Context,uri:Uri):Bitmap {
@@ -70,12 +70,14 @@ object PhotoArt {
         val rotation=Matrix().apply { postRotate(((c.turns%4)*90).toFloat()) }
         val rotated=if(c.turns%4==0)source else Bitmap.createBitmap(source,0,0,source.width,source.height,rotation,true)
         val straight=Bitmap.createBitmap(rotated.width,rotated.height,Bitmap.Config.ARGB_8888)
-        Canvas(straight).apply { drawColor(Color.WHITE);rotate(c.angle.coerceIn(-15f,15f),rotated.width/2f,rotated.height/2f);drawBitmap(rotated,0f,0f,Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)) }
+        Canvas(straight).apply { drawColor(if(c.style=="paper"&&!c.removeBackground)Color.WHITE else Color.TRANSPARENT);rotate(c.angle.coerceIn(-15f,15f),rotated.width/2f,rotated.height/2f);drawBitmap(rotated,0f,0f,Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)) }
         val left=(c.left.coerceIn(0f,.45f)*straight.width).toInt();val top=(c.top.coerceIn(0f,.45f)*straight.height).toInt()
         val w=max(3,((1-c.left.coerceIn(0f,.45f)-c.right.coerceIn(0f,.45f))*straight.width).toInt()).coerceAtMost(straight.width-left)
         val h=max(3,((1-c.top.coerceIn(0f,.45f)-c.bottom.coerceIn(0f,.45f))*straight.height).toInt()).coerceAtMost(straight.height-top)
         val cropped=Bitmap.createBitmap(straight,left,top,w,h)
-        val scale=min(1f,640f/max(w,h));val photo=Bitmap.createScaledBitmap(cropped,max(3,(w*scale).toInt()),max(3,(h*scale).toInt()),true)
+        val scale=min(1f,640f/max(w,h));val scaled=Bitmap.createScaledBitmap(cropped,max(3,(w*scale).toInt()),max(3,(h*scale).toInt()),true)
+        val photo=if(c.removeBackground)MemeArt.removeBackground(scaled,c.backgroundTolerance,c.backgroundCorner,checkCancelled)else scaled
+        if(c.style!="paper")return PaperResult(photo,MemeArt.artwork(photo,c.style,c.threshold,c.invert,color,checkCancelled))
         val pixels=IntArray(photo.width*photo.height);photo.getPixels(pixels,0,photo.width,0,0,photo.width,photo.height)
         val mask=BooleanArray(pixels.size){i->val p=pixels[i];val alpha=(p ushr 24) and 255;val luminance=(77*((p ushr 16) and 255)+150*((p ushr 8) and 255)+29*(p and 255))/256
             (luminance*alpha+255*(255-alpha))/255<c.threshold.coerceIn(1,254) }

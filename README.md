@@ -64,3 +64,7 @@ Wallet/Studio tabs, swipeable demo cards, opt-in automatic autograph sharing and
 ## Dual-display merchant demo (0.10)
 
 Cashier on port 8787, paired customer display on port 8788. Live cart updates, customer-side tipping, NFC autograph playback and synchronized receipts. [Setup and controls](docs/DUAL-DISPLAY.md). The original combined demo remains at `/classic`. No Android update or ESP32 reflash is needed.
+
+## Photo & Meme importer (Android 0.10)
+
+Import photos, memes and transparent PNG stickers, remove a plain background locally, and choose Sticker, Outline, Photo dots or Paper ink. Includes crop/rotate, tolerance controls, NFC artwork and receipt previews. [Usage and limitations](docs/PHOTO-MEME.md). Existing merchant/reader versions work unchanged.

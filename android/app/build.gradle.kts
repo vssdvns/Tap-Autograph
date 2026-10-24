@@ -7,7 +7,7 @@ plugins {
 android {
     namespace = "com.tapautograph.app"
     compileSdk = 35
-    defaultConfig { applicationId = "com.tapautograph.app"; minSdk = 26; targetSdk = 35; versionCode = 9; versionName = "0.9.0"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
+    defaultConfig { applicationId = "com.tapautograph.app"; minSdk = 26; targetSdk = 35; versionCode = 10; versionName = "0.10.0"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
     buildTypes {
         getByName("debug") { applicationIdSuffix = ".lab"; resValue("string", "app_name", "Tap Autograph") }
         getByName("release") { resValue("string", "app_name", "Tap Autograph") }
