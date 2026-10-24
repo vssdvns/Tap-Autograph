@@ -41,6 +41,7 @@ void initializeReader() {
 char line[160];
 size_t used = 0;
 bool overflow = false;
+uint8_t pollMs = 10;
 
 void reply(uint32_t id, const char *event, const char *fields) {
   Serial.printf("{\"id\":%lu,\"event\":\"%s\",%s}\n", (unsigned long)id, event, fields);
@@ -52,7 +53,13 @@ void command(char *text) {
   for(char *p=idText;*p;p++)if(*p<'0'||*p>'9')return;
   uint32_t id=strtoul(idText,nullptr,10);
   if(strcmp(op,"STATUS")==0){
-    char fields[360];snprintf(fields,sizeof(fields),"\"firmware\":\"tap-reader-0.5\",\"pn532\":%s,\"mode\":\"SPI\",\"sck\":%d,\"miso\":%d,\"mosi\":%d,\"cs\":%d,\"diagnostics\":1,\"stage\":\"%s\",\"attempts\":%u,\"chip_version\":%lu",ready?"true":"false",TAP_SCK,TAP_MISO,TAP_MOSI,TAP_CS,initStage,initAttempts,(unsigned long)chipVersion);reply(id,"status",fields);return;
+    char fields[360];snprintf(fields,sizeof(fields),"\"firmware\":\"tap-reader-0.5\",\"pn532\":%s,\"mode\":\"SPI\",\"sck\":%d,\"miso\":%d,\"mosi\":%d,\"cs\":%d,\"performance\":1,\"diagnostics\":1,\"stage\":\"%s\",\"attempts\":%u,\"chip_version\":%lu",ready?"true":"false",TAP_SCK,TAP_MISO,TAP_MOSI,TAP_CS,initStage,initAttempts,(unsigned long)chipVersion);reply(id,"status",fields);return;
+  }
+  if(strcmp(op,"TUNE")==0){
+    char *profile=strtok_r(nullptr," ",&save);
+    if(!profile || (strcmp(profile,"1") && strcmp(profile,"10")) || strtok_r(nullptr," ",&save)){reply(id,"error","\"code\":\"bad_profile\"");return;}
+    pollMs=atoi(profile);nfc.setReadyPollInterval(pollMs);
+    char fields[48];snprintf(fields,sizeof(fields),"\"poll_ms\":%u",pollMs);reply(id,"tuned",fields);return;
   }
   if(!ready){reply(id,"error","\"code\":\"pn532_missing\"");return;}
   if(strcmp(op,"POLL")==0){selectedTarget=nfc.inListPassiveTarget();reply(id,"target",selectedTarget?"\"found\":true":"\"found\":false");return;}
@@ -63,11 +70,16 @@ void command(char *text) {
   uint8_t bytes[45];uint8_t count=strlen(hex)/2;
   for(uint8_t i=0;i<count;i++){int a=nibble(hex[2*i]),b=nibble(hex[2*i+1]);if(a<0||b<0){reply(id,"error","\"code\":\"bad_hex\"");return;}bytes[i]=(a<<4)|b;}
   uint8_t response[204];uint8_t length=sizeof(response);
+  const uint32_t exchangeStarted = micros();
   if(!nfc.inDataExchange(bytes,count,response,&length)){selectedTarget=false;reply(id,"error","\"code\":\"exchange_failed\"");return;}
-  // Only framed replies; never log raw handwriting separately.
-  Serial.printf("{\"id\":%lu,\"event\":\"apdu\",\"response\":\"",(unsigned long)id);
-  for(uint8_t i=0;i<length;i++)Serial.printf("%02X",response[i]);
-  Serial.println("\"}");
+  const uint32_t exchangeUs = uint32_t(micros() - exchangeStarted);
+  // One bounded write avoids hundreds of printf calls / tiny UART submissions.
+  char output[560];
+  int offset=snprintf(output,sizeof(output),"{\"id\":%lu,\"event\":\"apdu\",\"response\":\"",(unsigned long)id);
+  const char *digits="0123456789ABCDEF";
+  for(uint16_t i=0;i<length;i++){output[offset++]=digits[response[i]>>4];output[offset++]=digits[response[i]&15];}
+  offset+=snprintf(output+offset,sizeof(output)-offset,"\",\"exchange_us\":%lu,\"poll_ms\":%u}\n",(unsigned long)exchangeUs,pollMs);
+  Serial.write((const uint8_t *)output,offset);
 }
 void setup() {
   Serial.begin(115200);delay(400);

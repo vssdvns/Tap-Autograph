@@ -82,11 +82,23 @@ class SerialAdapter:
         result = self.request('STATUS')
         if result.get('firmware') != 'tap-reader-0.5' or result.get('event') != 'status':
             raise ReaderError('Unexpected firmware. Flash tap-reader-0.5.')
+        self.performance = result.get('performance') == 1
         return result.get('pn532') is True
+    def tune(self, poll_ms):
+        if not getattr(self, 'performance', False):
+            raise ReaderError('Flash the performance reader firmware before selecting a polling profile.')
+        result = self.request('TUNE', str(poll_ms))
+        if result.get('event') != 'tuned' or result.get('poll_ms') != poll_ms:
+            raise ReaderError('Reader did not accept the polling profile.')
+        self.poll_ms = poll_ms
     def poll(self):
         return self.request('POLL').get('found') is True
     def exchange(self, command):
+        started = time.monotonic()
         result = self.request('APDU', command.hex().upper())
+        elapsed = time.monotonic() - started
+        firmware_us = result.get('exchange_us')
+        self.last_exchange_metrics = {'roundtrip_seconds': elapsed, 'reader_seconds': firmware_us / 1_000_000 if type(firmware_us) is int and 0 <= firmware_us <= 4_000_000 else None}
         try:
             if result.get('event') != 'apdu' or not isinstance(result.get('response'),str) or len(result['response']) > 408:
                 raise ValueError()
@@ -129,6 +141,7 @@ def read_transfer(adapter, publish, state=lambda code:None, select_command=SELEC
     started = time.monotonic()
     metadata = response_data(adapter.exchange(select_command))
     metadata_done = time.monotonic()
+    chunk_metrics = []
     if len(metadata) != 49 or metadata[0] != 1:
         raise ReaderError('Unsupported phone metadata.')
     session = metadata[1:9]
@@ -144,6 +157,8 @@ def read_transfer(adapter, publish, state=lambda code:None, select_command=SELEC
         for attempt in range(3):
             try:
                 data = response_data(adapter.exchange(command))
+                metric = getattr(adapter, 'last_exchange_metrics', None)
+                if metric is not None: chunk_metrics.append(metric.copy())
                 expected_size = min(192,length-index*192)
                 if len(data) != 10 + expected_size or data[:8] != session or data[8:10] != struct.pack('>H',index):
                     raise ReaderError('Invalid or stale chunk.')
@@ -170,13 +185,22 @@ def read_transfer(adapter, publish, state=lambda code:None, select_command=SELEC
     publish(packet, session, adapter.simulated)  # Node TAG1 decoder can reject here; no Finish on rejection.
     published = time.monotonic()
     state('verified')
+    metrics = {'packet_format': packet[:4].decode('ascii', errors='replace')}
+    if getattr(adapter, 'poll_ms', None) is not None: metrics['poll_ms'] = adapter.poll_ms
+    if chunk_metrics:
+        metrics['chunk_roundtrip_seconds'] = round(sum(m['roundtrip_seconds'] for m in chunk_metrics), 4)
+        measured = [m for m in chunk_metrics if m['reader_seconds'] is not None]
+        if measured:
+            metrics['reader_exchange_seconds'] = round(sum(m['reader_seconds'] for m in measured), 4)
+            metrics['usb_host_seconds'] = round(sum(max(0, m['roundtrip_seconds'] - m['reader_seconds']) for m in measured), 4)
+            metrics['measured_chunks'] = len(measured)
     try:
         response_data(adapter.exchange(b'\x80\x20\x00\x00\x28' + session + expected_hash))
     except ReaderError:
         state('ack_lost')
-        return {'bytes':length,'chunks':count,'seconds':round(time.monotonic()-started,3),'metadata_seconds':round(metadata_done-started,3),'read_seconds':round(read_done-metadata_done,3),'publish_seconds':round(published-read_done,3),'retries':retries,'acknowledged':False,'simulated':adapter.simulated}
+        return {'bytes':length,'chunks':count,'seconds':round(time.monotonic()-started,3),'metadata_seconds':round(metadata_done-started,3),'read_seconds':round(read_done-metadata_done,3),'publish_seconds':round(published-read_done,3),'retries':retries,'acknowledged':False,'simulated':adapter.simulated, **metrics}
     state('complete')
-    return {'bytes':length,'chunks':count,'seconds':round(time.monotonic()-started,3),'metadata_seconds':round(metadata_done-started,3),'read_seconds':round(read_done-metadata_done,3),'publish_seconds':round(published-read_done,3),'retries':retries,'acknowledged':True,'simulated':adapter.simulated}
+    return {'bytes':length,'chunks':count,'seconds':round(time.monotonic()-started,3),'metadata_seconds':round(metadata_done-started,3),'read_seconds':round(read_done-metadata_done,3),'publish_seconds':round(published-read_done,3),'retries':retries,'acknowledged':True,'simulated':adapter.simulated, **metrics}
 
 def two_tap(adapter, merchant):
     context=merchant.request('/api/reader/checkout').get('checkout')
@@ -210,6 +234,7 @@ def main():
     parser.add_argument('--port',help='USB serial port, for example COM5')
     parser.add_argument('--server',default='http://127.0.0.1:8787')
     parser.add_argument('--simulate',metavar='JSON',help='Replay a synthetic reader transcript without hardware')
+    parser.add_argument('--poll-ms',type=int,choices=(1,10),help='Performance firmware polling profile; no baud/wiring change')
     parser.add_argument('--list',action='store_true',help='List USB serial ports; opens none')
     args=parser.parse_args()
     if args.list:
@@ -226,6 +251,10 @@ def main():
         if not adapter.status():
             merchant.state('pn532_missing',adapter.simulated)
             raise ReaderError('ESP32 replied, but PN532 was not detected. Check mode, power and wiring, then reset.')
+        if args.poll_ms is not None:
+            if args.simulate: raise ReaderError('Polling profiles require physical reader hardware.')
+            adapter.tune(args.poll_ms)
+            print(f'Reader performance profile: {args.poll_ms} ms readiness polling; buffered USB replies.')
         merchant.state('ready',adapter.simulated)
         print('SIMULATED READER' if adapter.simulated else 'USB reader ready. Open Two-tap NFC checkout or NFC payload lab; keep phone unlocked.')
         last_heartbeat = 0.0

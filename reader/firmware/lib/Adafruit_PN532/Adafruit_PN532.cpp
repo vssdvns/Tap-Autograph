@@ -1580,18 +1580,10 @@ bool Adafruit_PN532::isready() {
 */
 /**************************************************************************/
 bool Adafruit_PN532::waitready(uint16_t timeout) {
-  uint16_t timer = 0;
+  const uint32_t started = millis();
   while (!isready()) {
-    if (timeout != 0) {
-      timer += 10;
-      if (timer > timeout) {
-#ifdef PN532DEBUG
-        PN532DEBUGPRINT.println("TIMEOUT!");
-#endif
-        return false;
-      }
-    }
-    delay(10);
+    if (timeout && uint32_t(millis() - started) >= timeout) return false;
+    delay(readyPollMs); // Runtime A/B profile; keep the command settling delays.
   }
   return true;
 }

@@ -53,3 +53,7 @@ Use this kit with app 0.13 for compact TAG2 memes and tip selection confirmed by
 ## 0.14 combined customer signing
 
 Tips and the signature pad share one customer screen. Draw then Continue, or choose a tip and retap the phone to finish automatically without Continue. See `COMBINED-SIGNING.md`. Replace the kit and restart the merchant/bridge; no ESP32 reflash is required.
+
+## Performance experiment
+
+See [PERFORMANCE-TEST.md](PERFORMANCE-TEST.md) for buffered USB replies, optional 1 ms polling, instrumentation, and the 10-run A/B procedure. Requires one firmware update; keep the current phone app.

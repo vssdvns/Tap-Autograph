@@ -10,3 +10,12 @@
 Host retries reads at most twice (three attempts total), re-polls and re-selects the exact same metadata before retrying. Session changes abort the transfer. SHA256+length are checked on the host, then the local Node server must accept/decode TAG1 before Finish is sent. Lost Finish acknowledgement is reported separately and is not represented as phone completion. Retries after disconnect can retain a snapshot only within the phone's existing60s grant.
 
 The server deduplicates session+hash for2min. After success the bridge waits for the phone to leave before another read. APDU transport is plaintext; unkeyed hashes/checksums do not authenticate it. No serial packets are persisted by the bridge. Do not record a Serial Monitor transcript of sensitive handwriting.
+
+### Optional performance capability (reader performance experiment 1)
+
+The firmware name remains tap-reader-0.5 for compatibility. STATUS includes
+`performance:1` when it supports `TUNE <id> 1` and `TUNE <id> 10`.
+The response is `{"id":1,"event":"tuned","poll_ms":1}`; invalid or additional
+arguments return `bad_profile`. Reset defaults to 10 ms. Baud remains 115200.
+APDU replies additionally include `exchange_us` (inDataExchange elapsed microseconds)
+and `poll_ms`; clients may ignore these fields. No APDU command or payload changes.

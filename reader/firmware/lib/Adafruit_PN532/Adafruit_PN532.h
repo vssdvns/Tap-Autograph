@@ -140,6 +140,7 @@
  */
 class Adafruit_PN532 {
 public:
+  void setReadyPollInterval(uint8_t ms) { readyPollMs = ms == 1 ? 1 : 10; }
   Adafruit_PN532(uint8_t clk, uint8_t miso, uint8_t mosi,
                  uint8_t ss);                          // Software SPI
   Adafruit_PN532(uint8_t ss, SPIClass *theSPI = &SPI); // Hardware SPI
@@ -210,6 +211,7 @@ private:
   void readdata(uint8_t *buff, uint8_t n);
   void writecommand(uint8_t *cmd, uint8_t cmdlen);
   bool isready();
+  uint8_t readyPollMs = 10;
   bool waitready(uint16_t timeout);
   bool readack();
 

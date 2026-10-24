@@ -88,6 +88,36 @@ class ReaderTests(unittest.TestCase):
             def read(self,n):return b'A'
         adapter=SerialAdapter.__new__(SerialAdapter);adapter.serial=Fake();adapter.sequence=0
         with self.assertRaisesRegex(ReaderError,'Oversized'):adapter.request('STATUS')
+    def test_performance_profile_requires_capability_and_matching_ack(self):
+        adapter=SerialAdapter.__new__(SerialAdapter)
+        with self.assertRaisesRegex(ReaderError,'Flash'):adapter.tune(1)
+        adapter.performance=True
+        calls=[]
+        def request(op,data):calls.append((op,data));return {'event':'tuned','poll_ms':1}
+        adapter.request=request;adapter.tune(1)
+        self.assertEqual(calls,[('TUNE','1')])
+        with self.assertRaisesRegex(ReaderError,'accept'):adapter.tune(10)
+    def test_transfer_reports_separate_reader_and_usb_timings(self):
+        adapter=ReplayAdapter(FIXTURE.parent/'raster-reader.json',False)
+        exchange=adapter.exchange
+        def timed(cmd):
+            result=exchange(cmd)
+            adapter.last_exchange_metrics={'roundtrip_seconds':.16,'reader_seconds':.11}
+            return result
+        adapter.exchange=timed
+        result=read_transfer(adapter,lambda *args:None)
+        self.assertEqual(result['measured_chunks'],1)
+        self.assertEqual(result['chunk_roundtrip_seconds'],.16)
+        self.assertEqual(result['reader_exchange_seconds'],.11)
+        self.assertEqual(result['usb_host_seconds'],.05)
+    def test_legacy_firmware_metrics_remain_optional(self):
+        adapter=SerialAdapter.__new__(SerialAdapter)
+        adapter.request=lambda *args:{'event':'apdu','response':'9000'}
+        self.assertEqual(adapter.exchange(b'12345'),b'\x90\x00')
+        self.assertIsNone(adapter.last_exchange_metrics['reader_seconds'])
+        adapter.request=lambda *args:{'event':'apdu','response':'9000','exchange_us':-1}
+        adapter.exchange(b'12345')
+        self.assertIsNone(adapter.last_exchange_metrics['reader_seconds'])
     def test_remote_server_urls_are_rejected_before_network_use(self):
         for url in ['https://localhost:8787','http://example.com','http://localhost@evil.test','http://localhost:8787/path']:
             with self.assertRaises(ReaderError):LocalMerchant(url)
