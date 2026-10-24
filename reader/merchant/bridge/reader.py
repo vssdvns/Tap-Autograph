@@ -56,7 +56,7 @@ class SerialAdapter:
         self.sequence += 1
         ident = self.sequence
         self.serial.write(f'{op} {ident}{" " + data if data else ""}\n'.encode('ascii'))
-        deadline = time.monotonic() + 4
+        deadline = time.monotonic() + (30 if op == 'STATUS' else 4)
         buffer = bytearray()
         while time.monotonic() < deadline:
             byte = self.serial.read(1)

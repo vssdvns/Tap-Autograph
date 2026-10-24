@@ -6,6 +6,38 @@
 Adafruit_PN532 nfc(TAP_CS, &SPI);
 bool ready = false;
 bool selectedTarget = false;
+uint32_t chipVersion = 0;
+uint8_t initAttempts = 0;
+const char *initStage = "not_started";
+
+// Preserve the TAP1 serial protocol; extra status fields are diagnostic only.
+void initializeReader() {
+  ready = false;
+  selectedTarget = false;
+  chipVersion = 0;
+  for (initAttempts = 1; initAttempts <= 3; ++initAttempts) {
+    initStage = "spi_begin_failed";
+    if (nfc.begin()) {
+      initStage = "firmware_read_failed";
+      chipVersion = nfc.getFirmwareVersion();
+      if (chipVersion && ((chipVersion >> 24) & 0xff) == 0x32) {
+        initStage = "sam_config_failed";
+        if (nfc.SAMConfig()) {
+          initStage = "retry_config_failed";
+          if (nfc.setPassiveActivationRetries(0x01)) {
+            ready = true;
+            initStage = "ready";
+            break;
+          }
+        }
+      }
+    }
+    // Retry transient startup failures, never change wiring or interface mode.
+    if (initAttempts < 3) delay(250);
+  }
+  if (initAttempts > 3) initAttempts = 3;
+}
+
 char line[160];
 size_t used = 0;
 bool overflow = false;
@@ -20,7 +52,7 @@ void command(char *text) {
   for(char *p=idText;*p;p++)if(*p<'0'||*p>'9')return;
   uint32_t id=strtoul(idText,nullptr,10);
   if(strcmp(op,"STATUS")==0){
-    char fields[180];snprintf(fields,sizeof(fields),"\"firmware\":\"tap-reader-0.5\",\"pn532\":%s,\"mode\":\"SPI\",\"sck\":%d,\"miso\":%d,\"mosi\":%d,\"cs\":%d",ready?"true":"false",TAP_SCK,TAP_MISO,TAP_MOSI,TAP_CS);reply(id,"status",fields);return;
+    char fields[360];snprintf(fields,sizeof(fields),"\"firmware\":\"tap-reader-0.5\",\"pn532\":%s,\"mode\":\"SPI\",\"sck\":%d,\"miso\":%d,\"mosi\":%d,\"cs\":%d,\"diagnostics\":1,\"stage\":\"%s\",\"attempts\":%u,\"chip_version\":%lu",ready?"true":"false",TAP_SCK,TAP_MISO,TAP_MOSI,TAP_CS,initStage,initAttempts,(unsigned long)chipVersion);reply(id,"status",fields);return;
   }
   if(!ready){reply(id,"error","\"code\":\"pn532_missing\"");return;}
   if(strcmp(op,"POLL")==0){selectedTarget=nfc.inListPassiveTarget();reply(id,"target",selectedTarget?"\"found\":true":"\"found\":false");return;}
@@ -40,8 +72,10 @@ void command(char *text) {
 void setup() {
   Serial.begin(115200);delay(400);
   SPI.begin(TAP_SCK,TAP_MISO,TAP_MOSI,TAP_CS);
-  nfc.begin();uint32_t version=nfc.getFirmwareVersion();
-  if(version){ready=nfc.SAMConfig() && nfc.setPassiveActivationRetries(0x01);}
+  pinMode(TAP_CS, OUTPUT);
+  digitalWrite(TAP_CS, HIGH);
+  delay(250);
+  initializeReader();
   Serial.printf("{\"event\":\"boot\",\"firmware\":\"tap-reader-0.5\",\"pn532\":%s}\n",ready?"true":"false");
 }
 void loop() {
