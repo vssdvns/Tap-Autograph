@@ -2,6 +2,8 @@ package com.tapautograph.app
 
 import android.app.Activity
 import android.content.ComponentName
+import android.media.ToneGenerator
+import android.media.AudioManager
 import android.nfc.NfcAdapter
 import android.nfc.cardemulation.CardEmulation
 import androidx.compose.animation.core.animateFloatAsState
@@ -28,42 +30,53 @@ import kotlinx.coroutines.delay
 @Composable fun TwoTapScreen(data:SavedData,back:()->Unit){
     val context=LocalContext.current;val lifecycle=LocalLifecycleOwner.current.lifecycle
     val haptic=LocalHapticFeedback.current;val card=AutographSharing.checkout
-    var phase by remember{mutableIntStateOf(0)};var active by remember{mutableStateOf(false)}
-    var total by remember{mutableLongStateOf(0)};var message by remember{mutableStateOf("")}
+    var phase by remember{mutableIntStateOf(card.state())};var active by remember{mutableStateOf(card.active)}
+    var total by remember{mutableLongStateOf(card.total())};var seconds by remember{mutableLongStateOf(0)}
+    var message by remember{mutableStateOf("")}
+    val automatic=WalletTap.enabled(context)
     val adapter=remember{NfcAdapter.getDefaultAdapter(context)}
     DisposableEffect(lifecycle){
-        AutographSharing.card.disarm();card.stop()
-        fun preference(on:Boolean){try{if(adapter!=null&&context is Activity){val service=CardEmulation.getInstance(adapter);if(on)service.setPreferredService(context,ComponentName(context,AutographHceService::class.java)) else service.unsetPreferredService(context)}}catch(_:Exception){}}
+        AutographSharing.card.disarm()
+        fun preference(on:Boolean){try{if(adapter!=null&&context is Activity){val service=CardEmulation.getInstance(adapter);if(on)service.setPreferredService(context,ComponentName(context,AutographHceService::class.java))else service.unsetPreferredService(context)}}catch(_:Exception){}}
         preference(true)
-        val observer=LifecycleEventObserver{_,event->if(event==Lifecycle.Event.ON_PAUSE){card.stop();preference(false)}else if(event==Lifecycle.Event.ON_RESUME)preference(true)}
+        val observer=LifecycleEventObserver{_,event->if(event==Lifecycle.Event.ON_PAUSE){if(!automatic)card.stop();preference(false)}else if(event==Lifecycle.Event.ON_RESUME)preference(true)}
         lifecycle.addObserver(observer)
-        onDispose{lifecycle.removeObserver(observer);card.stop();preference(false)}
+        onDispose{lifecycle.removeObserver(observer);if(!automatic)card.stop();preference(false)}
     }
-    LaunchedEffect(Unit){while(true){phase=card.state();active=card.active;total=card.total();delay(100)}}
-    LaunchedEffect(phase){if(phase==2||phase==5)haptic.performHapticFeedback(HapticFeedbackType.LongPress)}
-    val scale by animateFloatAsState(if(phase==2||phase==5)1f else .85f,tween(450),label="tap pulse")
-    Page("Tap. Then make it yours.","TWO-TAP DEMO",back){
-        Text("Harbor Coffee · USD demo")
-        Text("Starting permits fictional card acceptance on the first tap. Your autograph still needs your approval after the second tap.")
-        Text("Demo only · No money moves · Keep phone unlocked and this screen open")
-        Box(Modifier.fillMaxWidth().height(170.dp),contentAlignment=Alignment.Center){
-            Box(Modifier.size(135.dp).scale(scale).background(Color(0xFF2764E7),CircleShape),contentAlignment=Alignment.Center){Text(if(phase==2||phase==5)"✓" else "↗",color=Color.White,fontSize=56.sp)}
+    LaunchedEffect(Unit){
+        while(true){
+            phase=card.state();active=card.active;total=card.total();seconds=card.remainingSeconds()
+            if(card.timedOut){WalletTap.cooldown();(context as? Activity)?.finish();break}
+            delay(100)
         }
-        Text(when(phase){1->"Confirming demo tap…";2->"Demo card accepted";3->"Review final total";4->"Sharing autograph…";5->"Autograph received by merchant";6->"Autograph skipped";else->if(active)"Ready for your first tap" else "Start a demo checkout"},style=MaterialTheme.typography.headlineSmall)
-        if(phase>0)Text(java.text.NumberFormat.getCurrencyInstance(java.util.Locale.US).format(total/100.0),style=MaterialTheme.typography.headlineMedium)
+    }
+    LaunchedEffect(phase){
+        if(phase==2||phase==5){
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            runCatching{ToneGenerator(AudioManager.STREAM_NOTIFICATION,55).let{it.startTone(ToneGenerator.TONE_PROP_ACK,140);delay(180);it.release()}}
+        }
+        if(phase==5){delay(2200);card.stop();WalletTap.cooldown();back()}
+    }
+    val scale by animateFloatAsState(if(phase==2||phase==5)1f else .88f,tween(if(data.preferences.reducedMotion)0 else 450),label="tap pulse")
+    Page("A tap. A little you.","TAP AUTOGRAPH",{card.stop();WalletTap.cooldown();back()}){
+        Text("Harbor Coffee · Demo checkout",style=MaterialTheme.typography.titleMedium)
+        Box(Modifier.fillMaxWidth().height(190.dp),contentAlignment=Alignment.Center){Box(Modifier.size(148.dp).scale(scale).background(Color(0xFF2764E7),CircleShape),contentAlignment=Alignment.Center){Text(if(phase==2||phase==5)"✓" else "↗",color=Color.White,fontSize=60.sp)}}
+        Text(when(phase){1->"Confirming your tap…";2->"Demo payment accepted";3->"Review final total";4->"Sending your autograph";5->"Signed. Sealed. Shared.";6->"Autograph skipped";else->if(active)"Hold near the reader" else "Ready for your next tap"},style=MaterialTheme.typography.headlineMedium)
+        if(phase>0)Text(java.text.NumberFormat.getCurrencyInstance(java.util.Locale.US).format(total/100.0),style=MaterialTheme.typography.headlineLarge)
         when(phase){
-            2->Text("Move your phone away. Choose a tip on the merchant screen, then tap again for your autograph.")
-            3->{Text("Keep holding near the reader. Confirm this final total to share your saved autograph with this demo order.");Primary("Share autograph") {card.approve()};OutlinedButton(onClick={card.skip()}){Text("Skip autograph")}}
-            4->Text("Hold steady until the merchant acknowledges receipt.")
-            5->Text("All done. Remove your phone from the reader.")
-            6->Text("Move your phone away. If needed, choose Finish without autograph on the merchant.")
+            2->{Text("Choose your tip on the merchant screen. Tap again for your autograph—or keep holding your phone nearby.");data.autograph?.let{InkPanel(it,95)}}
+            3->{Text("Review the total, then share your autograph.");Primary("Share autograph"){card.approve()}}
+            4->Text("Hold steady until the merchant confirms receipt.")
+            5->Text("Your autograph is on the receipt.")
+            6->Text("You can finish without an autograph on the merchant screen.")
         }
-        if(!active||phase in listOf(5,6))Primary("Start two-tap demo",enabled=data.autograph!=null){
-            try{require(adapter?.isEnabled==true){"Turn on NFC in phone settings."};card.start(CompactInkCodec.encode(requireNotNull(data.autograph)));message=""}catch(e:Exception){message=e.message?:"Could not start."}
+        if(seconds>0){LinearProgressIndicator(progress={seconds/45f},modifier=Modifier.fillMaxWidth());Text("Autograph window · ${seconds}s remaining",style=MaterialTheme.typography.labelLarge)}
+        if(phase in 2..4)OutlinedButton(onClick={card.skip();WalletTap.cooldown();back()},modifier=Modifier.fillMaxWidth()){Text("Skip autograph")}
+        if(!active)Primary("Ready to tap",enabled=data.autograph!=null){
+            try{require(adapter?.isEnabled==true){"Turn on NFC in phone settings."};WalletTap.resetCooldown();card.start(CompactInkCodec.encode(requireNotNull(data.autograph)),autoShare=automatic,selectedCard=WalletTap.selectedCard(context));message=""}catch(e:Exception){message=e.message?:"Could not start."}
         }
-        if(active)OutlinedButton(onClick={card.stop()}){Text("Stop demo")}
-        if(data.autograph==null)Text("Save an autograph in your gallery first.")
+        if(active)TextButton(onClick={card.stop();WalletTap.cooldown();back()}){Text("Cancel checkout")}
         if(message.isNotEmpty())Text(message)
-        Text("The demo lasts 3 minutes. Returning to another app cancels it. NFC is unencrypted and the merchant is not authenticated.",style=MaterialTheme.typography.bodySmall)
+        Text("Demo only · No money moves",style=MaterialTheme.typography.bodySmall)
     }
 }

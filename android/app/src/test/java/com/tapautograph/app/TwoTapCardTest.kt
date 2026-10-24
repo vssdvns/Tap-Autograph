@@ -32,3 +32,25 @@ class TwoTapCardTest {
   File("build/two-tap-fixture.json").apply{parentFile.mkdirs();writeText(fixture.toString())}
  }
 }
+
+class AutomaticTwoTapTest {
+ private val packet get()=CompactInkCodec.encode(Autograph(aspect=1.8f,strokes=listOf(InkStroke(listOf(InkPoint(.1f,.2f,0),InkPoint(.8f,.7f,200))))))
+ private val binding=ByteArray(32){it.toByte()}
+ private fun offer(phase:Int,amount:Int=1000,b:ByteArray=binding)=AutographApdu.command(0x30,b+ByteBuffer.allocate(5).putInt(amount).put(phase.toByte()).array())
+ private fun start(c:TwoTapCard){c.start(packet,autoShare=true,selectedCard=1);c.process(AutographApdu.SELECT);val response=c.process(offer(1));assertEquals(1,response[1].toInt());c.process(AutographApdu.command(0x32,byteArrayOf(1)))}
+ @Test fun automaticSharesOnlyAfterBoundFinalOffer(){val c=TwoTapCard();start(c);assertEquals(2,c.state());assertEquals("6985",AutographApdu.hex(c.process(AutographApdu.command(0x33,byteArrayOf()))));c.process(offer(2,b=ByteArray(32)));assertEquals(2,c.state());c.process(offer(2,1250));assertEquals(4,c.state());assertEquals(1250L,c.total());assertEquals("9000",AutographApdu.hex(c.process(AutographApdu.command(0x33,byteArrayOf())).takeLast(2).toByteArray()))}
+ @Test fun countdownStartsAtPaymentAckAndDoesNotResetOnRetap(){var now=0L;val c=TwoTapCard{now};start(c);assertEquals(45L,c.remainingSeconds());now=30000;c.deactivate();c.process(AutographApdu.SELECT);c.process(offer(2));assertEquals(15L,c.remainingSeconds());now=45000;assertEquals(0,c.state());assertTrue(c.timedOut);assertFalse(c.active);assertEquals("6985",AutographApdu.hex(c.process(AutographApdu.SELECT)))}
+ @Test fun duplicateAckDoesNotExtendDeadline(){var now=0L;val c=TwoTapCard{now};start(c);now=44000;c.process(AutographApdu.command(0x32,byteArrayOf(1)));assertEquals(1L,c.remainingSeconds());now=45001;assertEquals(0,c.state())}
+ @Test fun stoppedAndSkippedAutomaticSessionsReleaseNoInk(){val c=TwoTapCard();start(c);c.skip();assertEquals(6,c.state());assertEquals("6985",AutographApdu.hex(c.process(AutographApdu.command(0x33,byteArrayOf()))));c.stop();assertFalse(c.active)}
+ @Test fun automaticTranscriptSharesWithoutApproveButton(){
+  val c=TwoTapCard();c.start(packet,autoShare=true,selectedCard=1);val exchanges=mutableListOf<JsonObject>()
+  fun send(cmd:ByteArray):ByteArray{val out=c.process(cmd);exchanges.add(buildJsonObject{put("command",AutographApdu.hex(cmd));put("response",AutographApdu.hex(out))});assertEquals("9000",AutographApdu.hex(out.takeLast(2).toByteArray()));return out.dropLast(2).toByteArray()}
+  send(AutographApdu.SELECT);send(offer(1));send(AutographApdu.command(0x32,byteArrayOf(1)));c.deactivate();send(AutographApdu.SELECT);send(offer(2,1200));assertEquals(4,c.state());send(AutographApdu.command(0x31,byteArrayOf()));val meta=send(AutographApdu.command(0x33,byteArrayOf()));val session=meta.copyOfRange(1,9)
+  val count=((meta[15].toInt()and 255)shl 8)+(meta[16].toInt()and 255)
+  for(i in 0 until count)send(AutographApdu.command(0x10,session+byteArrayOf((i ushr 8).toByte(),i.toByte())))
+  send(AutographApdu.command(0x20,session+AutographApdu.digest(packet)));assertEquals(5,c.state())
+  val fixture=buildJsonObject{put("protocol","TAP2");put("simulated",true);put("packet",java.util.Base64.getEncoder().encodeToString(packet));put("exchanges",JsonArray(exchanges))}
+  File("build/automatic-two-tap-fixture.json").apply{parentFile?.mkdirs();writeText(fixture.toString())}
+ }
+
+}

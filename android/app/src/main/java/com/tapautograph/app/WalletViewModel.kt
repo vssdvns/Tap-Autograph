@@ -26,7 +26,7 @@ class LocalRepository(application: Application) {
     }.getOrDefault(SavedData())
     fun write(data: SavedData) {
         val stream = file.startWrite()
-        try { stream.write(json.encodeToString(data).toByteArray()); file.finishWrite(stream) }
+        try { stream.write(json.encodeToString(data).toByteArray()); file.finishWrite(stream);WalletTap.designRevision++ }
         catch (e: Exception) { file.failWrite(stream); throw e }
     }
 }

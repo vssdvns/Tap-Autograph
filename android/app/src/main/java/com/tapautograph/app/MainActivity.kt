@@ -78,9 +78,16 @@ class MainActivity : ComponentActivity() {
             else {
                 val nav = rememberNavController()
                 val offer by vm.pairOffer.collectAsStateWithLifecycle()
+                LaunchedEffect(Unit) {
+                    while(true){
+                        val phase=AutographSharing.checkout.state()
+                        if(phase in 1..4 && nav.currentDestination?.route!="two-tap")nav.navigate("two-tap"){launchSingleTop=true}
+                        kotlinx.coroutines.delay(150)
+                    }
+                }
                 LaunchedEffect(offer?.id) { if (offer != null) nav.navigate("live") { launchSingleTop = true } }
                 NavHost(nav, startDestination = "wallet") {
-                    composable("wallet") { Home(vm, data, { nav.navigate(it) }) }
+                    composable("wallet") { WalletHome(vm, data, { nav.navigate(it) }) }
                     composable("autograph") { AutographScreen(vm, data, { nav.popBackStack() }, { vm.startEditor("autograph"); nav.navigate("editor") }) }
                     composable("editor") { Editor(vm, data.preferences, {
                         if(vm.saveAutograph())nav.popBackStack()

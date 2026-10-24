@@ -175,9 +175,9 @@ def two_tap(adapter, merchant):
         raise ReaderError('No two-tap order is ready. Choose a tip or start an order on the merchant.')
     binding=bytes.fromhex(context['id'].replace('-','')+context['nonce'])
     payload=binding+struct.pack('>IB',context['amount'],context['phase'])
-    response_data(adapter.exchange(b'\x80\x30\x00\x00\x25'+payload))
+    offer_result=response_data(adapter.exchange(b'\x80\x30\x00\x00\x25'+payload))
     if context['phase']==1:
-        merchant.request('/api/reader/accepted',{'id':context['id'],'nonce':context['nonce']})
+        merchant.request('/api/reader/accepted',{'id':context['id'],'nonce':context['nonce'], **({'card':offer_result[1]} if len(offer_result)==2 and offer_result[1] in (0,1) else {})})
         response_data(adapter.exchange(b'\x80\x32\x00\x00\x01\x01'))
         return {'first_tap':True,'acknowledged':True,'simulated':adapter.simulated}
     deadline=time.monotonic()+35
@@ -229,7 +229,15 @@ def main():
                     if adapter.simulated: break
                     # One transfer per consent grant; don't repeatedly display a held phone.
                     while adapter.poll():
-                        merchant.state("complete" if result["acknowledged"] else "ack_lost",False)
+                        if result.get("first_tap"):
+                            # V2 supports staying in the field while the merchant selects a tip.
+                            next_order=merchant.request('/api/reader/checkout').get('checkout')
+                            if next_order and next_order.get('phase')==2:
+                                response_data(adapter.exchange(SELECT))
+                                result=two_tap(adapter,merchant)
+                                print(json.dumps(result))
+                        else:
+                            merchant.state("complete" if result["acknowledged"] else "ack_lost",False)
                         time.sleep(.5)
                 except ReaderError as error:
                     merchant.state('transfer_error',adapter.simulated)

@@ -56,3 +56,7 @@ Reader kit 0.7 connects a new NFC autograph transfer to an explicitly armed merc
 - Validate the NFC reader across phone placements and larger designs.
 - Build a transaction-aware two-tap demo with the phone unlocked and the app open.
 - Explore receipt printer output.
+
+## Wallet V2 (0.9)
+
+Wallet/Studio tabs, swipeable demo cards, opt-in automatic autograph sharing and a 45-second window. Android default-wallet selection is available for controlled prototype-reader tests; real payments are not supported. See [setup and device validation](docs/WALLET-V2.md).

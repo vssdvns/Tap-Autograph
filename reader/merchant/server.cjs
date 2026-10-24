@@ -97,7 +97,9 @@ function createApp({ now = () => Date.now(), port = 8787 } = {}) {
           if(req.headers.authorization!=='Bearer '+readerHub.token)fail(403,'Reader token required.');
           const b=await jsonBody(req),s=get(b.id);
           if(twoTapTarget!==s.id||s.mode!=='two-tap'||b.nonce!==s.nfcNonce)fail(409,'Checkout changed.');
-          if(s.stage==='paired')change(s,'tip');else if(!['tip','autograph'].includes(s.stage))fail(409,'Checkout ended.');
+          if(b.card!==undefined&&![0,1].includes(b.card))fail(400,'Invalid demo card.');
+          if(s.stage==='paired'){s.card=b.card??0;change(s,'tip');}else if(!['tip','autograph'].includes(s.stage))fail(409,'Checkout ended.');
+          else if(b.card!==undefined&&b.card!==s.card)fail(409,'Demo card changed.');
           return send(res,200,{accepted:true});
         }
         if(req.method==='POST'&&url.pathname==='/api/reader/skip-checkout'){

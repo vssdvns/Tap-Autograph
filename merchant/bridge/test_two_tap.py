@@ -26,6 +26,11 @@ class TwoTapTests(unittest.TestCase):
         self.assertTrue(result['first_tap']);self.assertEqual(phone.commands[-1],bytes.fromhex('803200000101'))
         self.assertEqual(merchant.calls[-1][0],'/api/reader/accepted')
         offer=phone.commands[0];self.assertEqual(len(offer),42);self.assertEqual(offer[5:37],bytes(range(32)));self.assertEqual(struct.unpack('>IB',offer[37:]),(1200,1))
+    def test_automatic_offer_propagates_selected_demo_card(self):
+        phone=Phone();original=phone.exchange
+        phone.exchange=lambda cmd: b'\x01\x01\x90\x00' if cmd[1]==0x30 else original(cmd)
+        merchant=Merchant();two_tap(phone,merchant)
+        self.assertEqual(merchant.calls[-1][1]['card'],1)
     def test_skip_never_reads_or_publishes_ink(self):
         phone=Phone();merchant=Merchant(2);result=two_tap(phone,merchant)
         self.assertTrue(result['skipped']);self.assertEqual(merchant.calls[-1][0],'/api/reader/skip-checkout')
@@ -41,8 +46,12 @@ class TwoTapTests(unittest.TestCase):
 
 class KotlinInteropTests(unittest.TestCase):
     def test_actual_kotlin_two_tap_transcript_reaches_finish_after_bound_publish(self):
+        self.verify_fixture('two-tap.json')
+    def test_automatic_kotlin_transcript_needs_no_approve_button(self):
+        self.verify_fixture('automatic-two-tap.json')
+    def verify_fixture(self,filename):
         import json,base64
-        fixture=json.loads((Path(__file__).resolve().parents[1]/'nfc/fixtures/two-tap.json').read_text())
+        fixture=json.loads((Path(__file__).resolve().parents[1]/'nfc/fixtures'/filename).read_text())
         steps=list(fixture['exchanges']);published=[]
         class Adapter:
             simulated=True
