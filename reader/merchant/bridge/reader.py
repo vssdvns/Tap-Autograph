@@ -136,6 +136,8 @@ def read_transfer(adapter, publish, state=lambda code:None, select_command=SELEC
     expected_hash = metadata[17:]
     packet = bytearray()
     retries = 0
+    started = time.monotonic()
+    last_update = started - 1
     for index in range(count):
         command = b'\x80\x10\x00\x00\x0a' + session + struct.pack('>H',index)
         for attempt in range(3):
@@ -155,7 +157,11 @@ def read_transfer(adapter, publish, state=lambda code:None, select_command=SELEC
                     if not adapter.poll(): raise ReaderError('Phone removed. Re-enable sharing and try again.')
                 if response_data(adapter.exchange(select_command)) != metadata:
                     raise ReaderError('Phone grant changed. Start a new transfer.')
-        state('receiving')
+        # UI progress must not add one HTTP round trip to every 192-byte NFC chunk.
+        tick = time.monotonic()
+        if index == count - 1 or tick - last_update >= .25:
+            state('receiving')
+            last_update = tick
     packet = bytes(packet)
     if len(packet) != length or hashlib.sha256(packet).digest() != expected_hash:
         raise ReaderError('Packet integrity check failed.')
@@ -165,9 +171,9 @@ def read_transfer(adapter, publish, state=lambda code:None, select_command=SELEC
         response_data(adapter.exchange(b'\x80\x20\x00\x00\x28' + session + expected_hash))
     except ReaderError:
         state('ack_lost')
-        return {'bytes':length,'chunks':count,'retries':retries,'acknowledged':False,'simulated':adapter.simulated}
+        return {'bytes':length,'chunks':count,'seconds':round(time.monotonic()-started,3),'retries':retries,'acknowledged':False,'simulated':adapter.simulated}
     state('complete')
-    return {'bytes':length,'chunks':count,'retries':retries,'acknowledged':True,'simulated':adapter.simulated}
+    return {'bytes':length,'chunks':count,'seconds':round(time.monotonic()-started,3),'retries':retries,'acknowledged':True,'simulated':adapter.simulated}
 
 def two_tap(adapter, merchant):
     context=merchant.request('/api/reader/checkout').get('checkout')

@@ -21,6 +21,14 @@ class ReaderTests(unittest.TestCase):
         self.assertTrue(result['simulated']);self.assertTrue(result['acknowledged'])
         self.assertEqual(published[0][0],FIXTURE.with_suffix('.tai').read_bytes())
         self.assertIn('retrying',events);self.assertEqual(events[-1],'complete')
+    def test_progress_is_throttled_and_transfer_duration_reported(self):
+        from unittest.mock import patch
+        events=[]
+        with patch('reader.time.monotonic',return_value=1):
+            result=read_transfer(ReplayAdapter(FIXTURE,False),lambda *args:None,events.append)
+        self.assertEqual(2,events.count('receiving'))
+        self.assertEqual(0,result['seconds'])
+        self.assertTrue(result['acknowledged'])
     def test_rejected_laptop_packet_is_never_acknowledged(self):
         adapter=ReplayAdapter(FIXTURE,False);commands=[];exchange=adapter.exchange
         def traced(cmd):commands.append(cmd);return exchange(cmd)

@@ -35,6 +35,7 @@ class AutographApdu(private val now: () -> Long = { System.nanoTime() / 1_000_00
     }
     @Synchronized fun disarm() { packet?.fill(0); packet=null;session=ByteArray(0);hash=ByteArray(0);served.clear();selected=false;completed=false;deadline=0;state="Sharing is off" }
     @Synchronized fun deactivate() { selected=false }
+    @Synchronized fun progress():Float { expire();val size=packet?.size ?: return if(completed)1f else 0f;return served.size.toFloat()/((size+CHUNK-1)/CHUNK) }
     @Synchronized fun status(): String { expire(); return state }
     @Synchronized fun remainingSeconds(): Long { expire();return ((deadline-now()).coerceAtLeast(0)+999)/1000 }
     private fun expire() { if (deadline>0 && now()>=deadline) { disarm();state="Sharing expired" } }

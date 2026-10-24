@@ -16,6 +16,12 @@ class TwoTapCard(private val now:()->Long={System.nanoTime()/1_000_000}) {
     @Volatile var timedOut=false; private set
     @Volatile var active=false; private set
     @Synchronized fun start(packet:ByteArray, autoShare:Boolean=false, selectedCard:Int=0) { CompactInkCodec.decode(packet);stop();timedOut=false;automatic=autoShare;cardIndex=selectedCard.coerceIn(0,1);bytes=packet.copyOf();active=true;deadline=now()+180000 }
+    /** Freeze the artwork once the final offer starts a transfer. Never reset its deadline. */
+    @Synchronized fun choose(packet:ByteArray):Boolean {
+        expire();if(!active || phase !in 0..2)return false
+        CompactInkCodec.decode(packet);bytes.fill(0);bytes=packet.copyOf();return true
+    }
+    fun progress():Float=ink.progress()
     @Synchronized fun stop(){ink.disarm();bytes.fill(0);bytes=byteArrayOf();binding=byteArrayOf();active=false;phase=0;deadline=0;autographDeadline=0;selected=false;acceptedOffer=false;amount=0}
     private fun expire(){if(active&&(now()>=deadline || (autographDeadline>0&&now()>=autographDeadline))){stop();timedOut=true}}
     @Synchronized fun remainingSeconds():Long {expire();return if(autographDeadline>0)((autographDeadline-now()+999)/1000).coerceAtLeast(0) else 0}
