@@ -56,3 +56,30 @@ test('selected tip can be confirmed by a fresh reader tap; stale drafts and abse
  const shown=(await h.user('/api/display/state')).data.checkout;assert.equal(shown.stage,'autograph');assert.equal(shown.tip,0);assert.equal(shown.total,598);
  assert.equal((await h.user('/api/display/action',{checkoutId:s.id,action:'tip-select',tip:300})).status,409);
  }finally{await h.close();}});
+
+test('manual display signing completes with the chosen tip and rejects stale, invalid or competing signatures',async()=>{const h=await setup();try{
+ const cart=[{id:'latte',quantity:1}];await h.staff('/api/display/cart',{cart});let s=(await h.staff('/api/checkouts',{cart,address:'127.0.0.1',mode:'two-tap',customerDisplay:true})).data;
+ const c=(await h.reader('/api/reader/checkout')).data.checkout;
+ const ink={schema:1,id:'manual-test',aspect:2.6,width:.012,color:0xff18365f,strokes:[{points:[{x:.1,y:.2,time:0,pressure:1,tool:0},{x:.8,y:.7,time:100,pressure:1,tool:0}]}]};
+ const body={checkoutId:s.id,action:'manual-sign',tip:110,tipRevision:1,autograph:ink};
+ assert.equal((await h.user('/api/display/action',body)).status,409);
+ await h.reader('/api/reader/accepted',c);
+ const selected=(await h.user('/api/display/action',{checkoutId:s.id,action:'tip-select',tip:110})).data.checkout;body.tipRevision=selected.tipRevision;
+ assert.equal((await h.user('/api/display/action',{...body,autograph:{...ink,strokes:[]}})).status,400);
+ assert.equal((await h.user('/api/display/action',{...body,tipRevision:0})).status,409);
+ assert.equal((await h.user('/api/display/action',{...body,tip:111})).status,409);
+ assert.equal((await h.call(h.customer,'/api/display/action',body,{authorization:'Bearer '+h.display.token,origin:'http://evil.invalid'})).status,403);
+ const receipt=(await h.user('/api/display/action',body)).data.checkout;assert.equal(receipt.stage,'completed');assert.equal(receipt.tip,110);assert.equal(receipt.total,708);assert.equal(receipt.autographSource,'manual-display');assert.equal(receipt.autographShared,true);
+ assert.equal(h.sessions.get(s.id).autograph,null);assert.equal((await h.reader('/api/reader/checkout')).data.checkout,null);
+ assert.equal((await h.user('/api/display/action',body)).status,200);
+ assert.equal((await h.user('/api/display/action',{...body,autograph:{...ink,id:'changed'}})).status,409);
+ const packet=fs.readFileSync(__dirname+'/../nfc/fixtures/reader.tai');assert.equal((await h.reader('/api/reader/event',{type:'packet',session:'cd'.repeat(8),simulated:true,sha256:crypto.createHash('sha256').update(packet).digest('hex'),packet:packet.toString('base64'),checkoutId:s.id,nonce:c.nonce})).status,409);
+ }finally{await h.close();}});
+
+test('NFC receipt cannot be overwritten by a late manual submission',async()=>{const h=await setup();try{
+ const cart=[{id:'cookie',quantity:1}];await h.staff('/api/display/cart',{cart});const s=(await h.staff('/api/checkouts',{cart,address:'127.0.0.1',mode:'two-tap',customerDisplay:true})).data;
+ const c=(await h.reader('/api/reader/checkout')).data.checkout;await h.reader('/api/reader/accepted',c);await h.user('/api/display/action',{checkoutId:s.id,action:'tip',tip:0});
+ const packet=fs.readFileSync(__dirname+'/../nfc/fixtures/reader.tai');await h.reader('/api/reader/event',{type:'packet',session:'ef'.repeat(8),simulated:true,sha256:crypto.createHash('sha256').update(packet).digest('hex'),packet:packet.toString('base64'),checkoutId:s.id,nonce:c.nonce});
+ const autograph={schema:1,id:'late',aspect:2,width:.01,color:0xff18365f,strokes:[{points:[{x:.5,y:.5,time:0,pressure:1,tool:0}]}]};
+ assert.equal((await h.user('/api/display/action',{checkoutId:s.id,action:'manual-sign',tip:0,tipRevision:0,autograph})).status,409);assert.equal(h.sessions.get(s.id).autographSource,'simulated-reader');
+ }finally{await h.close();}});

@@ -49,3 +49,7 @@ The updated bridge throttles progress events and reports transfer duration. Repl
 ## 0.13 app compatibility
 
 Use this kit with app 0.13 for compact TAG2 memes and tip selection confirmed by a fresh phone tap. Restart both merchant and bridge after updating. No ESP32 reflash is needed. Read `FAST-TRANSFER.md` for the complete workflow and timing limitations.
+
+## 0.14 combined customer signing
+
+Tips and the signature pad share one customer screen. Draw then Continue, or choose a tip and retap the phone to finish automatically without Continue. See `COMBINED-SIGNING.md`. Replace the kit and restart the merchant/bridge; no ESP32 reflash is required.

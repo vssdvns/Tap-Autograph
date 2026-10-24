@@ -80,3 +80,7 @@ See [compact checkout](docs/COMPACT-CHECKOUT.md) for the floating tap card, blue
 ## Faster transfer and simpler checkout (0.13)
 
 See [transfer changes](docs/FAST-TRANSFER.md) for tightly cropped favorite thumbnails, a clean sending dial, tip selection confirmed by the next phone tap, compact TAG2 meme masks, reduced bridge overhead and separate transport/playback timings. Update both APK and Reader Kit; existing ESP32 firmware remains compatible.
+
+## Combined tip and signature screen (0.14)
+
+[Combined signing](docs/COMBINED-SIGNING.md) restores the selected phone autograph in the dial and a preview box above it. The customer display presents tips and a signature pad together: draw and Continue, or select a tip and tap the phone to finish automatically. Update the app and Reader Kit; keep the current ESP32 firmware.

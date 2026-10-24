@@ -441,7 +441,7 @@ private fun date(time: Long): String = SimpleDateFormat("MMM d, h:mm a", Locale.
             TextButton(onClick = { confirmation = "reset" }, Modifier.fillMaxWidth()) { Text("Reset all demo data") }
         }
         Block {
-            Text("Tap Autograph / 0.13", style = MaterialTheme.typography.titleLarge)
+            Text("Tap Autograph / 0.14", style = MaterialTheme.typography.titleLarge)
             Text("An independent Samsung Wallet-inspired interaction concept. Not affiliated with Samsung or Google. All cards, purchases, and payment interactions are fictional. Payments are simulated. The custom NFC reader transfers compact autograph artwork; it does not connect to bank cards or commercial payment terminals. Optional QR pairing connects to your local merchant relay.")
             Text("Built around your handwriting ✦", color = MaterialTheme.colorScheme.primary)
         }

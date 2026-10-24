@@ -88,8 +88,8 @@ function createApp({ now = () => Date.now(), port = 8787, customerPort = port + 
   const handler = async (req, res) => {
     try {
       const url = new URL(req.url, 'http://localhost'); const parts = url.pathname.split('/').filter(Boolean);
-      if(req.customerSurface && !['/','/customer','/display.js','/counter.css','/ink.js','/api/display/state','/api/display/action'].includes(url.pathname))fail(403,'Customer display only. Use the cashier port for merchant controls.');
-      if (req.method === 'GET' && ['/','/classic','/customer','/cashier.js','/display.js','/counter.css','/app.js','/style.css','/pair','/pair.js','/ink.js','/simulator.html','/simulator.js','/nfc-lab','/nfc-lab.js','/nfc-lab.css'].includes(url.pathname)) {
+      if(req.customerSurface && !['/','/customer','/display.js','/signature-pad.js','/counter.css','/ink.js','/api/display/state','/api/display/action'].includes(url.pathname))fail(403,'Customer display only. Use the cashier port for merchant controls.');
+      if (req.method === 'GET' && ['/','/classic','/customer','/cashier.js','/display.js','/signature-pad.js','/counter.css','/app.js','/style.css','/pair','/pair.js','/ink.js','/simulator.html','/simulator.js','/nfc-lab','/nfc-lab.js','/nfc-lab.css'].includes(url.pathname)) {
         if (!req.customerSurface && ['/','/classic','/nfc-lab'].includes(url.pathname) && !owner(req)) res.setHeader('Set-Cookie', `merchant=${token()}; HttpOnly; SameSite=Strict; Path=/`);
         res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
         const file = url.pathname === '/' ? (req.customerSurface?'customer.html':'cashier.html') : url.pathname === '/classic' ? 'index.html' : url.pathname === '/customer' ? 'customer.html' : url.pathname === '/nfc-lab' ? 'nfc-lab.html' : url.pathname === '/pair' ? 'pair.html' : url.pathname.slice(1);
@@ -120,6 +120,18 @@ function createApp({ now = () => Date.now(), port = 8787, customerPort = port + 
           if(s.mode!=='two-tap'||s.stage!=='tip')fail(409,'Tip choice is not available now.');
           if(b.tip!==null&&(!Number.isInteger(b.tip)||b.tip<0||b.tip>10000))fail(400,'Tip must be between $0 and $100.');
           s.pendingTip=b.tip;s.tipRevision=(s.tipRevision||0)+1;s.revision++;
+        }else if(b.action==='manual-sign'){
+          if(s.mode!=='two-tap')fail(409,'This checkout does not use the customer signature pad.');
+          if(!Number.isInteger(b.tip)||b.tip<0||b.tip>10000)fail(400,'Tip must be between $0 and $100.');
+          if(!validateAutograph(b.autograph)||b.autograph.strokes.some(stroke=>stroke.points.some(point=>point.tool<0||point.tool>4||point.time>86400000)))fail(400,'Draw a valid signature before continuing.');
+          const key=crypto.createHash('sha256').update(JSON.stringify({tip:b.tip,autograph:b.autograph})).digest('hex');
+          if(s.stage==='completed'&&s.manualSignatureKey===key)return send(res,200,displaySnapshot(d));
+          if(!['tip','autograph'].includes(s.stage))fail(409,'This checkout already received a signature or ended.');
+          if(s.stage==='tip'){
+            if(b.tipRevision!==(s.tipRevision||0)||(s.pendingTip!=null&&s.pendingTip!==b.tip))fail(409,'Tip selection changed. Check the total and continue again.');
+          }else if(b.tip!==s.tip)fail(409,'The final total changed. Check the screen again.');
+          s.tip=b.tip;s.pendingTip=null;s.manualSignatureKey=key;s.autographShared=true;s.autographSource='manual-display';
+          complete(s);
         }else if(b.action==='tip'){
           if(s.stage!=='tip')fail(409,'Tip choice is not available now.');
           if(!Number.isInteger(b.tip)||b.tip<0||b.tip>10000)fail(400,'Tip must be between $0 and $100.');

@@ -20,7 +20,7 @@ fun thumbnailInk(ink:Autograph):Autograph {
     val w=max(.015f,points.maxOf{it.x*ink.aspect}-x0+pad);val h=max(.015f,points.maxOf{it.y}-y0+pad)
     return ink.copy(aspect=w/h,width=ink.width/h,strokes=ink.strokes.map{stroke->InkStroke(stroke.points.map{it.copy(x=(it.x*ink.aspect-x0)/w,y=(it.y-y0)/h)})})
 }
-@Composable fun InkThumbnail(ink:Autograph){
+@Composable fun InkThumbnail(ink:Autograph,height:Int=38){
     val cropped=remember(ink){thumbnailInk(ink)}
-    AndroidView(factory={InkView(it)},modifier=Modifier.fillMaxWidth().height(38.dp).clip(RoundedCornerShape(6.dp)).background(Color.White),update={it.thumbnail=true;it.editable=false;it.autograph=cropped;it.elapsed=Long.MAX_VALUE;it.contentDescription="Cropped autograph preview"})
+    AndroidView(factory={InkView(it)},modifier=Modifier.fillMaxWidth().height(height.dp).clip(RoundedCornerShape(6.dp)).background(Color.White),update={it.thumbnail=true;it.editable=false;it.autograph=cropped;it.elapsed=Long.MAX_VALUE;it.contentDescription="Cropped autograph preview"})
 }

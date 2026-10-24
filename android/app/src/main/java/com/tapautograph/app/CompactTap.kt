@@ -65,17 +65,17 @@ import kotlinx.coroutines.withContext
     val accent by animateColorAsState(if(phase==5)Color(0xFF75E1B7) else Color(0xFF84B4FF),tween(if(reduced)0 else 350),label="checkout colour")
     val pulse=rememberInfiniteTransition(label="tap halo")
     val halo by pulse.animateFloat(.92f,1.08f,infiniteRepeatable(tween(1200),RepeatMode.Reverse),label="breathing")
-    Column(Modifier.fillMaxWidth().heightIn(max=680.dp).verticalScroll(rememberScrollState()).padding(24.dp).navigationBarsPadding(),verticalArrangement=Arrangement.spacedBy(14.dp),horizontalAlignment=Alignment.CenterHorizontally){
+    Column(Modifier.fillMaxWidth().heightIn(max=680.dp).verticalScroll(rememberScrollState()).padding(20.dp).navigationBarsPadding(),verticalArrangement=Arrangement.spacedBy(10.dp),horizontalAlignment=Alignment.CenterHorizontally){
         Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text("TAP AUTOGRAPH",Modifier.weight(1f),style=MaterialTheme.typography.labelMedium,letterSpacing=2.sp);TextButton(onClick=onClose){Text("Hide")}}
         AnimatedContent(targetState=if(showCheck)"check" else if(phase<2)"card" else if(phase==5)"done" else "ink",transitionSpec={fadeIn(tween(if(reduced)0 else 220)) togetherWith fadeOut(tween(if(reduced)0 else 150))},label="tap stage"){stage->
-            Box(Modifier.fillMaxWidth().height(if(stage=="ink")44.dp else 168.dp),contentAlignment=Alignment.Center){
+            Box(Modifier.fillMaxWidth().height(if(stage=="ink")0.dp else 168.dp),contentAlignment=Alignment.Center){
                 when(stage){
                     "card"->Column(Modifier.fillMaxWidth(.92f).height(158.dp).clip(RoundedCornerShape(24.dp)).background(Brush.linearGradient(listOf(Color(0xFF387BF0),Color(0xFF203B73)))).padding(22.dp),verticalArrangement=Arrangement.SpaceBetween){
                         Text(demoCards[WalletTap.selectedCard(context)].title,color=Color.White,fontSize=23.sp)
                         Text("••••  "+demoCards[WalletTap.selectedCard(context)].digits,color=Color.White,fontSize=21.sp)
                     }
                     "check","done"->Box(Modifier.size(130.dp).scale(if(reduced)1f else halo).background(if(stage=="done")Color(0xFF18795C) else Color(0xFF2764E7),CircleShape),contentAlignment=Alignment.Center){Text("✓",color=Color.White,fontSize=70.sp)}
-                    else->Text(if(phase==4)"↗" else "✦",color=accent,fontSize=32.sp)
+                    else->Unit
                 }
             }
         }
@@ -88,7 +88,15 @@ import kotlinx.coroutines.withContext
             Text("${seconds}s left · Sharing is optional",style=MaterialTheme.typography.labelMedium)
         }
         if(phase in 2..4 && !showCheck){
-            AutographDial(data,chosen,enabled=phase==2 && !choosing,remainingFraction=if(phase==2)seconds/45f else null,showCurrentPreview=false){ink->pendingInk=ink}
+            chosen?.let{ink->
+                Surface(shape=RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.surfaceVariant){
+                    Column(Modifier.widthIn(max=220.dp).padding(12.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(6.dp)){
+                        Text("Your autograph",style=MaterialTheme.typography.labelSmall)
+                        Box(Modifier.width(180.dp)){InkThumbnail(ink,height=48)}
+                    }
+                }
+            }
+            AutographDial(data,chosen,enabled=phase==2 && !choosing,remainingFraction=if(phase==2)seconds/45f else null,showCurrentPreview=true){ink->pendingInk=ink}
             val title=data.gallery.firstOrNull{it.ink.id==chosen?.id}?.title ?: "Default autograph"
             Text(if(choosing)"Preparing your selection…" else title,style=MaterialTheme.typography.labelMedium)
         }
