@@ -64,7 +64,7 @@ function createApp({ now = () => Date.now(), port = 8787, customerPort = port + 
   const cleanup = setInterval(() => { for (const [id, s] of sessions) if (s.expiresAt <= now()) { s.autograph = null; sessions.delete(id); } for(const [key,d] of displays)if(d.expiresAt<=now())displays.delete(key); }, 30000).unref();
   function get(id) { const s = sessions.get(id); if (!s) fail(404, 'Checkout not found. Start a new one.'); if (s.expiresAt <= now()) { s.autograph = null; sessions.delete(id); fail(410, 'Checkout expired. Start a new checkout.'); } return s; }
   function snapshot(s, merchant = false) {
-    const result = { id: s.id, merchant: 'Harbor Coffee', stage: s.stage, revision: s.revision, expiresAt: s.expiresAt, items: s.items, subtotal: s.subtotal, tax: s.tax, tip: s.tip, total: s.subtotal + s.tax + s.tip, card: s.card, mode:s.mode, nfcArmedUntil:s.nfcArmedUntil||0, autographSource:s.autographSource||null, autographShared: s.autographShared, completedAt: s.completedAt };
+    const result = { id: s.id, merchant: 'Harbor Coffee', stage: s.stage, revision: s.revision, expiresAt: s.expiresAt, items: s.items, subtotal: s.subtotal, tax: s.tax, tip: s.tip, pendingTip:s.pendingTip??null,tipRevision:s.tipRevision||0, total: s.subtotal + s.tax + s.tip, card: s.card, mode:s.mode, nfcArmedUntil:s.nfcArmedUntil||0, autographSource:s.autographSource||null, autographShared: s.autographShared, completedAt: s.completedAt };
     if (merchant) { result.pairingUrl = s.pairingUrl; if (s.stage === 'animating') result.autograph = s.autograph; result.speed = s.speed; result.reducedMotion = s.reducedMotion; }
     return result;
   }
@@ -116,10 +116,14 @@ function createApp({ now = () => Date.now(), port = 8787, customerPort = port + 
       if(req.method==='POST'&&url.pathname==='/api/display/action'){
         const d=displayAccess(req),b=await jsonBody(req),s=get(d.checkoutId);
         if(b.checkoutId!==s.id)fail(409,'This order changed. Please check the screen again.');
-        if(b.action==='tip'){
+        if(b.action==='tip-select'){
+          if(s.mode!=='two-tap'||s.stage!=='tip')fail(409,'Tip choice is not available now.');
+          if(b.tip!==null&&(!Number.isInteger(b.tip)||b.tip<0||b.tip>10000))fail(400,'Tip must be between $0 and $100.');
+          s.pendingTip=b.tip;s.tipRevision=(s.tipRevision||0)+1;s.revision++;
+        }else if(b.action==='tip'){
           if(s.stage!=='tip')fail(409,'Tip choice is not available now.');
           if(!Number.isInteger(b.tip)||b.tip<0||b.tip>10000)fail(400,'Tip must be between $0 and $100.');
-          s.tip=b.tip;change(s,'autograph');
+          s.tip=b.tip;s.pendingTip=null;change(s,'autograph');
         }else if(b.action==='complete'){
           if(!['animating','completed'].includes(s.stage))fail(409,'No autograph is ready.');
           if(s.stage!=='completed')complete(s);
@@ -139,7 +143,14 @@ function createApp({ now = () => Date.now(), port = 8787, customerPort = port + 
           if(req.headers.authorization!=='Bearer '+readerHub.token)fail(403,'Reader token required.');
           const s=sessions.get(twoTapTarget);
           if(!s||s.expiresAt<=now()||!['paired','tip','autograph'].includes(s.stage))return send(res,200,{checkout:null});
-          return send(res,200,{checkout:{id:s.id,nonce:s.nfcNonce,amount:s.subtotal+s.tax+s.tip,phase:s.stage==='autograph'?2:1}});
+          return send(res,200,{checkout:{id:s.id,nonce:s.nfcNonce,amount:s.subtotal+s.tax+s.tip,phase:s.stage==='autograph'?2:1,...(s.stage==='tip'&&s.pendingTip!=null?{tipPending:true,tipRevision:s.tipRevision}: {})}});
+        }
+        if(req.method==='POST'&&url.pathname==='/api/reader/confirm-tip'){
+          if(req.headers.authorization!=='Bearer '+readerHub.token)fail(403,'Reader token required.');
+          const b=await jsonBody(req),s=get(b.id);
+          if(twoTapTarget!==s.id||s.mode!=='two-tap'||s.nfcNonce!==b.nonce||s.stage!=='tip'||s.pendingTip==null||b.tipRevision!==s.tipRevision)fail(409,'Tip selection changed. Check the total and tap again.');
+          s.tip=s.pendingTip;s.pendingTip=null;change(s,'autograph');
+          return send(res,200,{checkout:{id:s.id,nonce:s.nfcNonce,amount:s.subtotal+s.tax+s.tip,phase:2}});
         }
         if(req.method==='POST'&&url.pathname==='/api/reader/accepted'){
           if(req.headers.authorization!=='Bearer '+readerHub.token)fail(403,'Reader token required.');

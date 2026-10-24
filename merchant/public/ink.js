@@ -21,7 +21,7 @@ export function playInk(canvas, autograph, speed=1, reduced=false, onDone=()=>{}
   }
  }
  const start=performance.now();
- function tick(now){if(cancelled)return;const elapsed=reduced?Infinity:(now-start)*speed;draw(elapsed);if(elapsed<duration)frame=requestAnimationFrame(tick);else if(!cancelled){frame=setTimeout(()=>{if(!cancelled)onDone();},reduced?0:700);}}
+ function tick(now){if(cancelled)return;const elapsed=reduced?Infinity:(now-start)*speed;draw(elapsed);if(elapsed<duration)frame=requestAnimationFrame(tick);else if(!cancelled){frame=setTimeout(()=>{if(!cancelled)onDone();},reduced||duration===0?0:150);}}
  frame=requestAnimationFrame(tick);
  return ()=>{cancelled=true;cancelAnimationFrame(frame);clearTimeout(frame);};
 }

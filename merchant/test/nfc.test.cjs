@@ -21,3 +21,16 @@ test('localhost endpoint imports without retaining handwriting or changing check
  const cross=await fetch(base+'/api/nfc-lab',{method:'POST',headers:{cookie,'Content-Type':'application/json',Origin:'http://evil.test'},body:'{}'});assert.equal(cross.status,403);
  }finally {await new Promise(resolve=>server.close(resolve));}
 });
+test('Kotlin TAG2 bitmap fixture reconstructs exact scanlines with bounded decoding',()=>{
+ const {decode}=require('../nfc/decode-compact.cjs');const zlib=require('node:zlib');
+ const packet=fs.readFileSync(path.join(__dirname,'../nfc/fixtures/raster.tai'));
+ const transcript=JSON.parse(fs.readFileSync(path.join(__dirname,'../nfc/fixtures/raster-reader.json'),'utf8'));
+ const result=receive(transcript);assert.deepEqual(result.packet,packet);const a=decode(packet);
+ assert.equal(a.strokes.length,106);assert.equal(a.aspect,128/96);assert.equal(a.strokes[0].points[0].x,20.5/128);assert.equal(a.strokes[0].points[0].y,12.5/96);
+ for(const bad of [Buffer.concat([packet,Buffer.from([0])]),Buffer.from(packet)]){
+  if(bad.length===packet.length)bad[9]^=1;
+  assert.throws(()=>decode(bad));
+ }
+ const tooBig=Buffer.from(packet);tooBig.writeUInt32BE(4000,5);assert.throws(()=>decode(tooBig),/bounds/);
+ const raw=zlib.inflateSync(packet.subarray(13));assert.equal(raw.length,10+128*96/8);
+});

@@ -44,6 +44,30 @@ class TwoTapTests(unittest.TestCase):
         with self.assertRaises(ReaderError):two_tap(phone,merchant)
         self.assertFalse(any(c[1]==0x32 for c in phone.commands))
 
+class PendingTipTests(unittest.TestCase):
+    def test_retap_commits_revision_before_final_phone_offer(self):
+        merchant=Merchant();original=merchant.request
+        def request(path,body=None):
+            if path.endswith('/confirm-tip'):
+                merchant.calls.append((path,body));self.assertEqual(body['tipRevision'],7)
+                return {'checkout':{'id':'00010203-0405-0607-0809-0a0b0c0d0e0f','nonce':'101112131415161718191a1b1c1d1e1f','amount':1444,'phase':2}}
+            value=original(path,body)
+            if path.endswith('/checkout'):value['checkout'].update(tipPending=True,tipRevision=7)
+            return value
+        merchant.request=request;phone=Phone();two_tap(phone,merchant)
+        self.assertEqual(struct.unpack('>IB',phone.commands[0][37:]),(1444,2))
+        self.assertEqual(merchant.calls[1][0],'/api/reader/confirm-tip')
+    def test_changed_tip_stops_before_any_offer(self):
+        merchant=Merchant();original=merchant.request
+        def request(path,body=None):
+            if path.endswith('/confirm-tip'):raise ReaderError('Tip selection changed')
+            value=original(path,body)
+            if path.endswith('/checkout'):value['checkout'].update(tipPending=True,tipRevision=7)
+            return value
+        merchant.request=request;phone=Phone()
+        with self.assertRaises(ReaderError):two_tap(phone,merchant)
+        self.assertEqual(phone.commands,[])
+
 class KotlinInteropTests(unittest.TestCase):
     def test_actual_kotlin_two_tap_transcript_reaches_finish_after_bound_publish(self):
         self.verify_fixture('two-tap.json')
@@ -56,6 +80,9 @@ class KotlinInteropTests(unittest.TestCase):
         class Adapter:
             simulated=True
             def exchange(self,cmd):
+                # The automatic offer already returns phase 4; its recorded status poll is optional.
+                if cmd[:2]==b'\x80\x33' and bytes.fromhex(steps[0]['command'])[:2]==b'\x80\x31':
+                    assert steps.pop(0)['response'].upper()=='049000'
                 step=steps.pop(0)
                 if bytes.fromhex(step['command'])!=cmd:raise AssertionError('command differs from Kotlin')
                 if cmd[1]==0x20:assert published

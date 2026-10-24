@@ -45,3 +45,7 @@ Open http://localhost:8787 for the cashier. Use its Open customer display link t
 ## App 0.11 compact checkout
 
 The updated bridge throttles progress events and reports transfer duration. Replace this kit folder for the speed update; keep the existing ESP32 firmware and wiring. See `COMPACT-CHECKOUT.md` for the floating phone card, emote wheel and device test steps.
+
+## 0.13 app compatibility
+
+Use this kit with app 0.13 for compact TAG2 memes and tip selection confirmed by a fresh phone tap. Restart both merchant and bridge after updating. No ESP32 reflash is needed. Read `FAST-TRANSFER.md` for the complete workflow and timing limitations.

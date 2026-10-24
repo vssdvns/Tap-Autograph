@@ -38,3 +38,21 @@ test('customer can skip autograph but cannot pay, cancel or change another order
  assert.equal((await h.user('/api/display/state')).data.checkout.autographShared,false);
  h.advance(6*60*60*1000+1);assert.equal((await h.user('/api/display/state')).status,403);
  }finally{await h.close();}});
+
+test('selected tip can be confirmed by a fresh reader tap; stale drafts and absent choices are rejected',async()=>{const h=await setup();try{
+ const cart=[{id:'latte',quantity:1}];await h.staff('/api/display/cart',{cart});const s=(await h.staff('/api/checkouts',{cart,address:'127.0.0.1',mode:'two-tap',customerDisplay:true})).data;
+ const c=(await h.reader('/api/reader/checkout')).data.checkout;await h.reader('/api/reader/accepted',c);
+ assert.equal((await h.reader('/api/reader/confirm-tip',{id:s.id,nonce:c.nonce,tipRevision:0})).status,409);
+ assert.equal((await h.user('/api/display/action',{checkoutId:s.id,action:'tip-select',tip:-1})).status,400);
+ const choice=(await h.user('/api/display/action',{checkoutId:s.id,action:'tip-select',tip:110})).data.checkout;
+ assert.equal(choice.stage,'tip');assert.equal(choice.tip,0);assert.equal(choice.pendingTip,110);
+ const pending=(await h.reader('/api/reader/checkout')).data.checkout;assert.equal(pending.tipPending,true);
+ await h.user('/api/display/action',{checkoutId:s.id,action:'tip-select',tip:0});
+ assert.equal((await h.reader('/api/reader/confirm-tip',{id:s.id,nonce:c.nonce,tipRevision:pending.tipRevision})).status,409);
+ await h.user('/api/display/action',{checkoutId:s.id,action:'tip-select',tip:null});assert.equal((await h.reader('/api/reader/checkout')).data.checkout.tipPending,undefined);
+ const latest=(await h.user('/api/display/action',{checkoutId:s.id,action:'tip-select',tip:0})).data.checkout;
+ assert.equal((await h.user('/api/reader/confirm-tip',{id:s.id,nonce:c.nonce,tipRevision:latest.tipRevision})).status,403);
+ const ready=await h.reader('/api/reader/confirm-tip',{id:s.id,nonce:c.nonce,tipRevision:latest.tipRevision});assert.equal(ready.status,200);assert.equal(ready.data.checkout.phase,2);
+ const shown=(await h.user('/api/display/state')).data.checkout;assert.equal(shown.stage,'autograph');assert.equal(shown.tip,0);assert.equal(shown.total,598);
+ assert.equal((await h.user('/api/display/action',{checkoutId:s.id,action:'tip-select',tip:300})).status,409);
+ }finally{await h.close();}});

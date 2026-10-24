@@ -96,3 +96,7 @@ Run tests with `node --test test/*.test.cjs` (or `npm test`). See VALIDATION.md 
 ## Cashier + customer display
 
 Run `node server.cjs` to serve the cashier on 8787 and the paired customer display on 8788. Start with the cashier pairing link; the customer chooses their tip and sees their autograph replay. See [DUAL-DISPLAY.md](DUAL-DISPLAY.md). The previous combined demo is available at `/classic`.
+
+## 0.13: tap-to-confirm tips and compact memes
+
+On the paired customer display, selecting a tip stages it. A fresh phone tap can confirm that selection and send the autograph, or the customer can still press Confirm total. Wait for the Ready hint before tapping. Restart the server and USB bridge after replacing this kit. The updated TAG2 decoder is required for eligible bitmap memes sent by app 0.13; older TAG1 artwork remains supported. No ESP32 reflash is needed. See the top-level `FAST-TRANSFER.md` in the Reader Kit for timings and compatibility.

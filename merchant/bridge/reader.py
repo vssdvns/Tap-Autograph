@@ -59,24 +59,24 @@ class SerialAdapter:
         deadline = time.monotonic() + (30 if op == 'STATUS' else 4)
         buffer = bytearray()
         while time.monotonic() < deadline:
-            byte = self.serial.read(1)
-            if not byte:
-                continue
-            if byte == b'\n':
-                try:
-                    event = json.loads(buffer)
-                except (ValueError, UnicodeDecodeError):
+            available = min(2048, max(1, getattr(self.serial,'in_waiting',0)))
+            incoming = self.serial.read(available)
+            for byte in incoming:
+                if byte == 10:
+                    try:
+                        event = json.loads(buffer)
+                    except (ValueError, UnicodeDecodeError):
+                        buffer.clear()
+                        continue
                     buffer.clear()
-                    continue  # Ignore bounded boot-ROM text, never print raw lines.
-                buffer.clear()
-                if not isinstance(event,dict) or event.get('id') != ident:
-                    continue
-                if event.get('event') == 'error':
-                    raise ReaderError('Reader command failed: ' + str(event.get('code', 'unknown'))[:50])
-                return event
-            buffer.extend(byte)
-            if len(buffer) > 2048:
-                raise ReaderError('Oversized serial reply. Reconnect the reader.')
+                    if not isinstance(event,dict) or event.get('id') != ident:
+                        continue
+                    if event.get('event') == 'error':
+                        raise ReaderError('Reader command failed: ' + str(event.get('code', 'unknown'))[:50])
+                    return event
+                buffer.append(byte)
+                if len(buffer) > 2048:
+                    raise ReaderError('Oversized serial reply. Reconnect the reader.')
         raise ReaderError('Reader did not reply. Check USB, firmware and PN532.')
     def status(self):
         result = self.request('STATUS')
@@ -126,7 +126,9 @@ def response_data(response):
 
 def read_transfer(adapter, publish, state=lambda code:None, select_command=SELECT):
     """publish must decode/accept on laptop before we send the phone Finish."""
+    started = time.monotonic()
     metadata = response_data(adapter.exchange(select_command))
+    metadata_done = time.monotonic()
     if len(metadata) != 49 or metadata[0] != 1:
         raise ReaderError('Unsupported phone metadata.')
     session = metadata[1:9]
@@ -136,7 +138,6 @@ def read_transfer(adapter, publish, state=lambda code:None, select_command=SELEC
     expected_hash = metadata[17:]
     packet = bytearray()
     retries = 0
-    started = time.monotonic()
     last_update = started - 1
     for index in range(count):
         command = b'\x80\x10\x00\x00\x0a' + session + struct.pack('>H',index)
@@ -165,20 +166,24 @@ def read_transfer(adapter, publish, state=lambda code:None, select_command=SELEC
     packet = bytes(packet)
     if len(packet) != length or hashlib.sha256(packet).digest() != expected_hash:
         raise ReaderError('Packet integrity check failed.')
+    read_done = time.monotonic()
     publish(packet, session, adapter.simulated)  # Node TAG1 decoder can reject here; no Finish on rejection.
+    published = time.monotonic()
     state('verified')
     try:
         response_data(adapter.exchange(b'\x80\x20\x00\x00\x28' + session + expected_hash))
     except ReaderError:
         state('ack_lost')
-        return {'bytes':length,'chunks':count,'seconds':round(time.monotonic()-started,3),'retries':retries,'acknowledged':False,'simulated':adapter.simulated}
+        return {'bytes':length,'chunks':count,'seconds':round(time.monotonic()-started,3),'metadata_seconds':round(metadata_done-started,3),'read_seconds':round(read_done-metadata_done,3),'publish_seconds':round(published-read_done,3),'retries':retries,'acknowledged':False,'simulated':adapter.simulated}
     state('complete')
-    return {'bytes':length,'chunks':count,'seconds':round(time.monotonic()-started,3),'retries':retries,'acknowledged':True,'simulated':adapter.simulated}
+    return {'bytes':length,'chunks':count,'seconds':round(time.monotonic()-started,3),'metadata_seconds':round(metadata_done-started,3),'read_seconds':round(read_done-metadata_done,3),'publish_seconds':round(published-read_done,3),'retries':retries,'acknowledged':True,'simulated':adapter.simulated}
 
 def two_tap(adapter, merchant):
     context=merchant.request('/api/reader/checkout').get('checkout')
     if not context:
         raise ReaderError('No two-tap order is ready. Choose a tip or start an order on the merchant.')
+    if context.get('tipPending'):
+        context=merchant.request('/api/reader/confirm-tip',{'id':context['id'],'nonce':context['nonce'],'tipRevision':context['tipRevision']})['checkout']
     binding=bytes.fromhex(context['id'].replace('-','')+context['nonce'])
     payload=binding+struct.pack('>IB',context['amount'],context['phase'])
     offer_result=response_data(adapter.exchange(b'\x80\x30\x00\x00\x25'+payload))
@@ -186,6 +191,8 @@ def two_tap(adapter, merchant):
         merchant.request('/api/reader/accepted',{'id':context['id'],'nonce':context['nonce'], **({'card':offer_result[1]} if len(offer_result)==2 and offer_result[1] in (0,1) else {})})
         response_data(adapter.exchange(b'\x80\x32\x00\x00\x01\x01'))
         return {'first_tap':True,'acknowledged':True,'simulated':adapter.simulated}
+    if offer_result[:1]==b'\x04':
+        return read_transfer(adapter,lambda packet,session,simulated:merchant.packet(packet,session,simulated,context),lambda code:merchant.state(code,adapter.simulated),select_command=b'\x80\x33\x00\x00\x00')
     deadline=time.monotonic()+35
     while time.monotonic()<deadline:
         status=response_data(adapter.exchange(b'\x80\x31\x00\x00\x00'))
@@ -244,13 +251,13 @@ def main():
                                 print(json.dumps(result))
                         else:
                             merchant.state("complete" if result["acknowledged"] else "ack_lost",False)
-                        time.sleep(.5)
+                        time.sleep(.08 if result.get("first_tap") else .5)
                 except ReaderError as error:
                     merchant.state('transfer_error',adapter.simulated)
                     print(str(error))
                     if adapter.simulated: raise
                     time.sleep(1)
-            time.sleep(.2)
+            time.sleep(.05)
     except KeyboardInterrupt:
         print('Bridge stopped.')
     finally:

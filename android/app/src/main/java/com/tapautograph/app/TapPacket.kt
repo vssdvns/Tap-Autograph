@@ -37,6 +37,8 @@ object TapPacket {
         val quick=if(duration>1200)compact.copy(strokes=compact.strokes.map { stroke->
             InkStroke(stroke.points.map{it.copy(time=(it.time-first)*1200/duration)})
         }) else compact
-        return CompactInkCodec.encode(quick)
+        val vector=CompactInkCodec.encode(quick)
+        val raster=RasterInkCodec.encodeOrNull(quick)
+        return if(raster!=null && raster.size<vector.size)raster else vector
     }
 }

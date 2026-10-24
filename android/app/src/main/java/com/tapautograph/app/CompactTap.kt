@@ -88,7 +88,7 @@ import kotlinx.coroutines.withContext
             Text("${seconds}s left · Sharing is optional",style=MaterialTheme.typography.labelMedium)
         }
         if(phase in 2..4 && !showCheck){
-            AutographDial(data,chosen,enabled=phase==2 && !choosing,remainingFraction=if(phase==2)seconds/45f else null){ink->pendingInk=ink}
+            AutographDial(data,chosen,enabled=phase==2 && !choosing,remainingFraction=if(phase==2)seconds/45f else null,showCurrentPreview=false){ink->pendingInk=ink}
             val title=data.gallery.firstOrNull{it.ink.id==chosen?.id}?.title ?: "Default autograph"
             Text(if(choosing)"Preparing your selection…" else title,style=MaterialTheme.typography.labelMedium)
         }

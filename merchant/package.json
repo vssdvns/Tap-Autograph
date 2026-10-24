@@ -1,1 +1,1 @@
-{"name":"tap-autograph-merchant","version":"0.10.0","private":true,"description":"Local two-device autograph checkout prototype","engines":{"node":">=20"},"scripts":{"start":"node server.cjs","dev":"node server.cjs --port 4173","test":"node --test"}}
+{"name":"tap-autograph-merchant","version":"0.13.0","private":true,"description":"Local two-device autograph checkout prototype","engines":{"node":">=20"},"scripts":{"start":"node server.cjs","dev":"node server.cjs --port 4173","test":"node --test"}}

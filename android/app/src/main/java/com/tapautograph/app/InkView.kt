@@ -13,6 +13,8 @@ import kotlin.math.max
 class InkView(context: Context) : View(context) {
     var autograph: Autograph? = null
         set(value) { field = value; invalidate() }
+    var thumbnail = false
+        set(value){field=value;invalidate()}
     var editable = false
     var elapsed = Long.MAX_VALUE
         set(value) { field = value; invalidate() }
@@ -28,7 +30,7 @@ class InkView(context: Context) : View(context) {
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val a = autograph ?: return
-        val margin = 18f * resources.displayMetrics.density
+        val margin = (if(thumbnail)2f else 18f) * resources.displayMetrics.density
         val f = fit(a.aspect, max(1f, width - 2 * margin), max(1f, height - 2 * margin))
         canvas.save(); canvas.translate(f.left + margin, f.top + margin)
         if (editable) {
@@ -67,7 +69,7 @@ class InkView(context: Context) : View(context) {
     }
     private fun sample(event: MotionEvent, index: Int, history: Int? = null) {
         val a = autograph ?: return
-        val margin = 18f * resources.displayMetrics.density
+        val margin = (if(thumbnail)2f else 18f) * resources.displayMetrics.density
         val f = fit(a.aspect, max(1f, width - 2 * margin), max(1f, height - 2 * margin))
         val x = history?.let { event.getHistoricalX(index, it) } ?: event.getX(index)
         val y = history?.let { event.getHistoricalY(index, it) } ?: event.getY(index)

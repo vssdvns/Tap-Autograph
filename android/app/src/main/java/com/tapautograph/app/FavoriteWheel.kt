@@ -29,7 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import kotlin.math.*
 
-@Composable fun AutographDial(data:SavedData,current:Autograph?,enabled:Boolean=true,initiallyExpanded:Boolean=false,remainingFraction:Float?=null,onChoose:(Autograph)->Unit){
+@Composable fun AutographDial(data:SavedData,current:Autograph?,enabled:Boolean=true,initiallyExpanded:Boolean=false,remainingFraction:Float?=null,showCurrentPreview:Boolean=true,onChoose:(Autograph)->Unit){
     val context=LocalContext.current;val haptic=LocalHapticFeedback.current;val density=LocalDensity.current
     val ids=WalletTap.favorites(context)
     val favorites=ids.mapNotNull{id->data.gallery.find{it.ink.id==id}}
@@ -70,7 +70,7 @@ import kotlin.math.*
                     val highlighted=hover==index
                     val scale by animateFloatAsState(if(highlighted)1.13f else 1f,tween(if(reduced)0 else 110),label="emote highlight")
                     Column(Modifier.offset(x=radius*cos(angle).toFloat(),y=radius*sin(angle).toFloat()).size(70.dp).scale(scale).clip(CircleShape).background(if(highlighted)blue else MaterialTheme.colorScheme.surfaceVariant).clickable(enabled=enabled){feedback();select(entry.ink)}.padding(7.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center){
-                        InkPanel(entry.ink,32)
+                        InkThumbnail(entry.ink)
                         Text(entry.title,maxLines=1,style=MaterialTheme.typography.labelSmall,color=if(highlighted)MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
@@ -98,7 +98,7 @@ import kotlin.math.*
                         if(next!=hover){hover=next;if(next!=null)feedback()}
                     }
                 }.clickable(enabled=enabled){expanded=!expanded;hover=null;offset=Offset.Zero},contentAlignment=Alignment.Center){
-                if(current!=null)Box(Modifier.padding(10.dp)){InkPanel(current,42)} else Text("✦",color=Color.White)
+                if(showCurrentPreview && current!=null)Box(Modifier.padding(7.dp)){InkThumbnail(current)} else Text("✦",color=Color.White)
             }
         }
         if(expanded && enabled){

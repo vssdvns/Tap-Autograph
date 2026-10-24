@@ -62,6 +62,7 @@ object CompactInkCodec {
     }
 
     fun decode(packet: ByteArray): Autograph {
+        if(packet.size>=4 && String(packet,0,4,Charsets.US_ASCII)=="TAG2")return RasterInkCodec.decode(packet)
         require(packet.size in (HEADER_SIZE + 1)..MAX_PACKET) { "Invalid compact payload size." }
         val envelope = DataInputStream(ByteArrayInputStream(packet))
         val version = ByteArray(4); envelope.readFully(version)

@@ -76,3 +76,7 @@ See [compact checkout](docs/COMPACT-CHECKOUT.md) for the floating tap card, blue
 ## Tap polish (0.12)
 
 [Payment chime and cursor-style autograph dial](docs/TAP-POLISH.md): once-per-order acceptance feedback, a small draggable selector after payment, optional sound/haptics, and clearer Samsung unlock/retap wording. App-only update; existing reader firmware and bridge remain compatible.
+
+## Faster transfer and simpler checkout (0.13)
+
+See [transfer changes](docs/FAST-TRANSFER.md) for tightly cropped favorite thumbnails, a clean sending dial, tip selection confirmed by the next phone tap, compact TAG2 meme masks, reduced bridge overhead and separate transport/playback timings. Update both APK and Reader Kit; existing ESP32 firmware remains compatible.

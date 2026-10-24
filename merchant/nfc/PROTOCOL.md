@@ -37,3 +37,9 @@ The Android simulator uses a separate instance of the same command engine, repea
 The laptop's `nfc/reader.cjs` checks transcript structure, metadata consistency, chunk session/index/size, consistent duplicates, completeness and hashes, then decodes TAG1. It cannot authenticate a transcript; anyone can generate one. The merchant `/nfc-lab` endpoint accepts only loopback clients, processes in memory without retaining ink, and does not alter checkout state. A USB/serial APDU adapter for PN532/ESP32 is the next hardware step and is not implemented here.
 
 Reference: https://developer.android.com/develop/connectivity/nfc/hce
+
+## TAG2 still scanline mask (0.13)
+
+TAG2 uses the same APDU transport and integrity envelope as TAG1. Bytes 0–3 are ASCII TAG2; byte 4 is 1 (zlib); bytes 5–8 are the uncompressed body length (big-endian uint32); bytes 9–12 are CRC32 of that body. The remaining bytes are one complete zlib stream, with no trailing bytes. Maximum raw body length is 3210 bytes.
+
+The body is width uint16, height uint16, ARGB uint32, ink width uint16/65535, then ceil(width×height/8) mask bytes, all integers big-endian. Dimensions are 3–160 with aspect <20 and normal valid ink width. Bits run row-major, most significant bit first; unused trailing bits must be zero. Set bits reconstruct into contiguous horizontal runs at pixel centers `(x+.5)/width, (y+.5)/height`, zero timestamps, pressure 1 and tool 0. Reject empty masks or more than 1000 reconstructed runs. The Android encoder conservatively accepts eligible opaque scanline art and selects TAG2 only when smaller than TAG1. Other artwork stays TAG1.

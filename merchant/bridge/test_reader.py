@@ -29,6 +29,11 @@ class ReaderTests(unittest.TestCase):
         self.assertEqual(2,events.count('receiving'))
         self.assertEqual(0,result['seconds'])
         self.assertTrue(result['acknowledged'])
+    def test_kotlin_bitmap_packet_uses_existing_reader_framing(self):
+        fixture=FIXTURE.parent/'raster-reader.json';published=[]
+        result=read_transfer(ReplayAdapter(fixture),lambda *args:published.append(args))
+        self.assertEqual(published[0][0],(FIXTURE.parent/'raster.tai').read_bytes())
+        self.assertEqual(result['chunks'],1);self.assertTrue(result['acknowledged'])
     def test_rejected_laptop_packet_is_never_acknowledged(self):
         adapter=ReplayAdapter(FIXTURE,False);commands=[];exchange=adapter.exchange
         def traced(cmd):commands.append(cmd);return exchange(cmd)
@@ -68,6 +73,15 @@ class ReaderTests(unittest.TestCase):
             def read(self,n):data=bytes(self.buffer[:n]);del self.buffer[:n];return data
         adapter=SerialAdapter.__new__(SerialAdapter);adapter.serial=Fake();adapter.sequence=0
         self.assertTrue(adapter.status());self.assertEqual(adapter.serial.written,b'STATUS 1\n')
+    def test_serial_parser_reads_available_bytes_in_one_batch(self):
+        class Fake:
+            def __init__(self):self.buffer=bytearray(b'boot\n{"id":99}\n{"id":1,"event":"apdu","response":"9000"}\n');self.reads=0
+            @property
+            def in_waiting(self):return len(self.buffer)
+            def write(self,data):pass
+            def read(self,n):self.reads+=1;value=bytes(self.buffer[:n]);del self.buffer[:n];return value
+        adapter=SerialAdapter.__new__(SerialAdapter);adapter.serial=Fake();adapter.sequence=0
+        self.assertEqual(adapter.exchange(b'12345'),b'\x90\x00');self.assertEqual(adapter.serial.reads,1)
     def test_oversized_serial_reply_is_bounded(self):
         class Fake:
             def write(self,data):pass
