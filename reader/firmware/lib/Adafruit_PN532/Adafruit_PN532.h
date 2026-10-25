@@ -140,6 +140,8 @@
  */
 class Adafruit_PN532 {
 public:
+  uint32_t tapWriteUs=0,tapAckUs=0,tapWaitUs=0,tapReadUs=0;
+  void setBulkRead(bool enabled) { tapBulkRead=enabled; }
   void setReadyPollInterval(uint8_t ms) { readyPollMs = ms == 1 ? 1 : 10; }
   Adafruit_PN532(uint8_t clk, uint8_t miso, uint8_t mosi,
                  uint8_t ss);                          // Software SPI
@@ -212,6 +214,7 @@ private:
   void writecommand(uint8_t *cmd, uint8_t cmdlen);
   bool isready();
   uint8_t readyPollMs = 10;
+  bool tapBulkRead=false,tapHardwareSpi=false;
   bool waitready(uint16_t timeout);
   bool readack();
 

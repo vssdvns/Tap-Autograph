@@ -40,6 +40,7 @@ struct SerialType {
 #include "SPI.h"
 inline uint8_t replyLength=204;
 struct Adafruit_PN532 {
+ uint32_t tapWriteUs=0,tapAckUs=0,tapWaitUs=0,tapReadUs=0;void setBulkRead(bool){}
  Adafruit_PN532(int,SPIType*){}bool begin(){return true;}
  uint32_t getFirmwareVersion(){return 0x32010600;}bool SAMConfig(){return true;}
  bool setPassiveActivationRetries(int){return true;}bool inListPassiveTarget(){return true;}
@@ -61,6 +62,7 @@ int main(){
  clockMs+=3001;loop();assert(serialBaud==115200 && Serial.baud==115200);
  run("TUNE 8 10");assert(pollMs==10);
  initStage="firmware_read_failed";chipVersion=0xffffffff;run("STATUS 999999999");
+ run("SPI 10 1");assert(bulkRead);run("SPI 11 2");run("SPI 12 0");assert(!bulkRead);
  std::cout<<Serial.out;
 }
 ''')
@@ -77,5 +79,6 @@ int main(){
     assert bytes.fromhex(rows[209]['response'])==bytes(range(204))
     assert rows[210]['poll_ms']==10
     assert rows[211]['transport']==2 and rows[211]['serial_baud']==115200
+    assert rows[212]['bulk_read'] is True and rows[213]['code']=='bad_spi_mode' and rows[214]['bulk_read'] is False
     assert rows[211]['chip_version']==0xffffffff and rows[211]['stage']=='firmware_read_failed'
     print('Firmware command-handler checks passed: all 204 Base64 lengths, legacy hex, baud handshake, idle fallback, invalid profiles; ASan/UBSan clean (leak checker disabled). Hardware mocked.')

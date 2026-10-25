@@ -157,6 +157,39 @@ class ReaderTests(unittest.TestCase):
         self.assertEqual(published[0][0],(FIXTURE.parent/'column.tai').read_bytes())
         self.assertEqual(result['packet_format'],'TAG3')
         self.assertTrue(result['acknowledged']);self.assertTrue(result['simulated'])
+    def test_spi_mode_requires_capability_and_matching_ack(self):
+        adapter=SerialAdapter.__new__(SerialAdapter)
+        with self.assertRaisesRegex(ReaderError,'SPI performance'):adapter.configure_spi(True)
+        adapter.spi_bulk_supported=True;calls=[]
+        def request(op,data):calls.append((op,data));return {'event':'spi','bulk_read':data=='1'}
+        adapter.request=request;adapter.configure_spi(True);self.assertTrue(adapter.bulk_read)
+        adapter.configure_spi(False);self.assertFalse(adapter.bulk_read)
+        self.assertEqual(calls,[('SPI','1'),('SPI','0')])
+        adapter.request=lambda *args:{'event':'spi','bulk_read':1}
+        with self.assertRaisesRegex(ReaderError,'accept'):adapter.configure_spi(True)
+    def test_exchange_phase_metrics_are_bounded_and_summed(self):
+        adapter=SerialAdapter.__new__(SerialAdapter)
+        response={'event':'apdu','response':'9000','exchange_us':100000,'write_us':1000,'ack_us':2000,'wait_us':90000,'read_us':3000}
+        adapter.request=lambda *args:response
+        adapter.exchange(b'12345');self.assertEqual(adapter.last_exchange_metrics['phases']['read'],.003)
+        response['read_us']=-1;adapter.exchange(b'12345');self.assertNotIn('phases',adapter.last_exchange_metrics)
+        response['read_us']=4000000;adapter.exchange(b'12345');self.assertNotIn('phases',adapter.last_exchange_metrics)
+    def test_kotlin_predictive_fixture_preserves_transfer_integrity(self):
+        fixture=FIXTURE.parent/'predictive-reader.json';published=[]
+        result=read_transfer(ReplayAdapter(fixture),lambda *args:published.append(args))
+        self.assertEqual(published[0][0],(FIXTURE.parent/'predictive.tai').read_bytes())
+        self.assertEqual(result['packet_format'],'TAG4');self.assertTrue(result['acknowledged'])
+    def test_phase_totals_cover_only_measured_chunk_replies(self):
+        adapter=ReplayAdapter(FIXTURE.parent/'predictive-reader.json',False);exchange=adapter.exchange
+        def timed(cmd):
+            value=exchange(cmd)
+            adapter.last_exchange_metrics={'roundtrip_seconds':.16,'reader_seconds':.11,'phases':{'write':.001,'ack':.002,'wait':.1,'read':.007}}
+            return value
+        adapter.exchange=timed
+        result=read_transfer(adapter,lambda *args:None)
+        self.assertEqual(result['phase_measured_chunks'],result['chunks'])
+        self.assertEqual(result['pn532_read_seconds'],round(.007*result['chunks'],4))
+        self.assertEqual(result['pn532_wait_seconds'],round(.1*result['chunks'],4))
     def test_remote_server_urls_are_rejected_before_network_use(self):
         for url in ['https://localhost:8787','http://example.com','http://localhost@evil.test','http://localhost:8787/path']:
             with self.assertRaises(ReaderError):LocalMerchant(url)

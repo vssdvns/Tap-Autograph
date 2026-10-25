@@ -12,6 +12,8 @@ object ColumnInkCodec {
         error("Long column integer.")
     }
     private fun DataOutputStream.variable(value:Int){var n=value;while(n>=128){writeByte((n and 127) or 128);n=n ushr 7};writeByte(n)}
+    private fun zig(n:Int)=(n shl 1) xor (n shr 31)
+    private fun unzig(n:Int)=(n ushr 1) xor -(n and 1)
     private fun envelope(magic:String,body:ByteArray,compressed:Boolean):ByteArray {
         var payload=body
         if(compressed)for(strategy in listOf(Deflater.DEFAULT_STRATEGY,Deflater.FILTERED)){
@@ -24,18 +26,22 @@ object ColumnInkCodec {
             it.writeInt(CRC32().also{c->c.update(body)}.value.toInt());it.write(payload)
         }}.toByteArray()
     }
-    fun encode(ink:Autograph):ByteArray {
+    fun encode(ink:Autograph,predictive:Boolean=false):ByteArray {
         val raw=CompactInkCodec.encodeBody(ink)
         val input=DataInputStream(ByteArrayInputStream(raw));val properties=ByteArray(8);input.readFully(properties)
         val count=input.variable(1000);val counts=IntArray(count)
         val streams=List(5){ByteArrayOutputStream()};val columns=streams.map{DataOutputStream(it)}
         for(s in 0 until count){counts[s]=input.variable(30000)
-            repeat(counts[s]){columns[0].variable(input.variable(8190));columns[1].variable(input.variable(8190));columns[2].variable(input.variable(86400000));columns[3].writeByte(input.readUnsignedByte());columns[4].writeByte(input.readUnsignedByte())}}
+            val previous=IntArray(2)
+            repeat(counts[s]){
+                for(c in 0..1){val delta=unzig(input.variable(8190));columns[c].variable(zig(if(predictive)delta-previous[c] else delta));previous[c]=delta}
+                columns[2].variable(input.variable(86400000));columns[3].writeByte(input.readUnsignedByte());columns[4].writeByte(input.readUnsignedByte())}}
         val body=ByteArrayOutputStream().also{out->DataOutputStream(out).use{it.write(properties);it.variable(count);counts.forEach{n->it.variable(n)};streams.forEach{stream->it.write(stream.toByteArray())}}}.toByteArray()
-        return envelope("TAG3",body,true).also{require(it.size<=CompactInkCodec.MAX_PACKET)}
+        return envelope(if(predictive)"TAG4" else "TAG3",body,true).also{require(it.size<=CompactInkCodec.MAX_PACKET)}
     }
     fun decode(packet:ByteArray):Autograph {
-        require(packet.size in 14..65536 && String(packet,0,4,Charsets.US_ASCII)=="TAG3" && packet[4].toInt() in 0..1){"Invalid column header."}
+        require(packet.size in 14..65536 && String(packet,0,4,Charsets.US_ASCII) in listOf("TAG3","TAG4") && packet[4].toInt() in 0..1){"Invalid column header."}
+        val predictive=packet[3]=='4'.code.toByte()
         val header=DataInputStream(ByteArrayInputStream(packet,5,8));val length=header.readInt();val crc=header.readInt().toLong() and 0xffffffffL
         require(length in 1..CompactInkCodec.MAX_BODY){"Invalid column bounds."}
         val payload=packet.copyOfRange(13,packet.size)
@@ -44,11 +50,13 @@ object ColumnInkCodec {
         val input=DataInputStream(ByteArrayInputStream(body));val properties=ByteArray(8);input.readFully(properties)
         val count=input.variable(1000);require(count>0)
         var total=0;val counts=IntArray(count){input.variable(30000).also{require(it>0 && total+it<=30000);total+=it}}
-        val fields=List(5){column->IntArray(total){if(column<3)input.variable(if(column<2)8190 else 86400000)else input.readUnsignedByte()}}
+        val fields=List(5){column->IntArray(total){if(column<3)input.variable(if(column<2)(if(predictive)16380 else 8190) else 86400000)else input.readUnsignedByte()}}
         require(input.available()==0){"Trailing column data."}
         var point=0
         val raw=ByteArrayOutputStream().also{out->DataOutputStream(out).use{it.write(properties);it.variable(count)
-            counts.forEach{n->it.variable(n);repeat(n){_->for(c in 0..2)it.variable(fields[c][point]);it.writeByte(fields[3][point]);it.writeByte(fields[4][point]);point++}}}}.toByteArray()
+            counts.forEach{n->it.variable(n);val previous=IntArray(2);repeat(n){_->
+                for(c in 0..1){val delta=unzig(fields[c][point])+(if(predictive)previous[c] else 0);require(delta in -4095..4095){"Invalid predicted delta."};previous[c]=delta;it.variable(zig(delta))}
+                it.variable(fields[2][point]);it.writeByte(fields[3][point]);it.writeByte(fields[4][point]);point++}}}}.toByteArray()
         return CompactInkCodec.decodeBody(raw,packet)
     }
 }

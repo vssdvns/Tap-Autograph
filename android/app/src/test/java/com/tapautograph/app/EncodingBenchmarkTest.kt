@@ -13,15 +13,16 @@ import java.io.File
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class EncodingBenchmarkTest {
     @Test fun realGeneratedNamesAndDoodlesKeepSmallestSupportedPacket(){
-        val lines=mutableListOf("Artwork | TAG1 bytes | TAG3 bytes | selected bytes | chunks")
+        val lines=mutableListOf("Artwork | TAG1 bytes | TAG3 bytes | TAG4 bytes | selected bytes | chunks")
         val artwork=nameStyles.indices.map{"Name ${nameStyles[it]}" to NameArt.create("Subha Sai",it,.15f,true)}+doodleTitles.indices.map{"Doodle $it" to DoodleArt.create(it)}
         for((title,ink) in artwork){
             val prepared=TapPacket.prepare(ink)
-            val a=CompactInkCodec.encode(prepared);val b=ColumnInkCodec.encode(prepared)
+            val a=CompactInkCodec.encode(prepared);val b=ColumnInkCodec.encode(prepared);val c=ColumnInkCodec.encode(prepared,true)
             val before=CompactInkCodec.decode(a);val after=CompactInkCodec.decode(b)
             assertEquals(before.copy(id=after.id),after)
+            assertEquals(before.strokes,CompactInkCodec.decode(c).strokes)
             val selected=TapPacket.encode(ink);assertTrue(selected.size<=a.size)
-            lines.add("$title | ${a.size} | ${b.size} | ${selected.size} | ${(selected.size+191)/192}")
+            lines.add("$title | ${a.size} | ${b.size} | ${c.size} | ${selected.size} | ${(selected.size+191)/192}")
         }
         File("build/encoding-benchmark.txt").writeText(lines.joinToString("\n"))
     }

@@ -58,6 +58,7 @@
 /**************************************************************************/
 
 #include "Adafruit_PN532.h"
+#include "TapSpiRead.h"
 
 byte pn532ack[] = {0x00, 0x00, 0xFF,
                    0x00, 0xFF, 0x00}; ///< ACK message from PN532
@@ -121,6 +122,7 @@ Adafruit_PN532::Adafruit_PN532(uint8_t irq, uint8_t reset, TwoWire *theWire)
 */
 /**************************************************************************/
 Adafruit_PN532::Adafruit_PN532(uint8_t ss, SPIClass *theSPI) {
+  tapHardwareSpi=true;
   _cs = ss;
   spi_dev = new Adafruit_SPIDevice(ss, 1000000, SPI_BITORDER_LSBFIRST,
                                    SPI_MODE0, theSPI);
@@ -323,6 +325,8 @@ uint32_t Adafruit_PN532::getFirmwareVersion(void) {
 bool Adafruit_PN532::sendCommandCheckAck(uint8_t *cmd, uint8_t cmdlen,
                                          uint16_t timeout) {
 
+  tapWriteUs=tapAckUs=tapWaitUs=0;
+  uint32_t tapMark=micros();
   // I2C works without using IRQ pin by polling for RDY byte
   // seems to work best with some delays between transactions
   uint8_t SLOWDOWN = 0;
@@ -335,6 +339,7 @@ bool Adafruit_PN532::sendCommandCheckAck(uint8_t *cmd, uint8_t cmdlen,
   // I2C TUNING
   delay(SLOWDOWN);
 
+  tapWriteUs=uint32_t(micros()-tapMark);tapMark=micros();
   // Wait for chip to say its ready!
   if (!waitready(timeout)) {
     return false;
@@ -356,12 +361,14 @@ bool Adafruit_PN532::sendCommandCheckAck(uint8_t *cmd, uint8_t cmdlen,
 
   // I2C TUNING
   delay(SLOWDOWN);
+  tapAckUs=uint32_t(micros()-tapMark);tapMark=micros();
 
   // Wait for chip to say its ready!
   if (!waitready(timeout)) {
     return false;
   }
 
+  tapWaitUs=uint32_t(micros()-tapMark);
   return true; // ack'd command
 }
 
@@ -673,6 +680,7 @@ bool Adafruit_PN532::inDataExchange(uint8_t *send, uint8_t sendLength,
 #endif
     return false;
   }
+  tapReadUs=0;
   uint8_t i;
 
   pn532_packetbuffer[0] = 0x40; // PN532_COMMAND_INDATAEXCHANGE;
@@ -695,7 +703,9 @@ bool Adafruit_PN532::inDataExchange(uint8_t *send, uint8_t sendLength,
     return false;
   }
 
+  const uint32_t tapReadStarted=micros();
   readdata(pn532_packetbuffer, sizeof(pn532_packetbuffer));
+  tapReadUs=uint32_t(micros()-tapReadStarted);
 
   if (pn532_packetbuffer[0] == 0 && pn532_packetbuffer[1] == 0 &&
       pn532_packetbuffer[2] == 0xff) {
@@ -1600,7 +1610,7 @@ void Adafruit_PN532::readdata(uint8_t *buff, uint8_t n) {
   if (spi_dev) {
     // SPI read
     uint8_t cmd = PN532_SPI_DATAREAD;
-    spi_dev->write_then_read(&cmd, 1, buff, n);
+    tapSpiRead(spi_dev,cmd,buff,n,tapBulkRead && tapHardwareSpi && n>1);
   } else if (i2c_dev) {
     // I2C read
     uint8_t rbuff[n + 1]; // +1 for leading RDY byte

@@ -63,3 +63,9 @@ See [PERFORMANCE-TEST.md](PERFORMANCE-TEST.md) for buffered USB replies, optiona
 See [TURBO-TRANSFER.md](TURBO-TRANSFER.md) for the updated phone encoding and optional
 460800-baud/Base64 USB mode. Run start-reader-turbo.bat after one firmware flash; baseline
 mode remains available. Update this merchant before installing the v0.15 phone app.
+
+## v0.16 bulk SPI experiment
+
+See [READER-BULK.md](READER-BULK.md) for optional buffered SPI reads, phase measurements,
+and lossless TAG4 coordinate prediction. Compare start-reader-turbo.bat with
+start-reader-bulk.bat on the same autograph after updating firmware, merchant and APK.

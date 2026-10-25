@@ -41,3 +41,11 @@ accumulators restart per stroke; time accumulates globally. At most 1000 nonempt
 
 Columns preserve every TAG1 quantized value. The NFC encoder tries TAG1, eligible TAG2,
 and TAG3 and chooses the smallest; saved artwork is not changed. Merchant update required.
+
+## TAG4 predicted coordinate columns (v0.16)
+
+Envelope and bounds are identical to TAG3 except the magic is TAG4. The x/y columns store
+zigzag second differences: d[i]=q[i]-q[i-1], v[i]=d[i]-d[i-1], with q[-1]=d[-1]=0 at each
+stroke. Zigzag v is bounded by 16380. Decode v, reconstruct d (must be -4095..4095), then q
+(must remain 0..4095). Counts, timing, pressure, tools, CRC and strict trailing-data rejection
+are unchanged. The four-way smallest-packet selection adds no further quantization.

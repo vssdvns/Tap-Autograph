@@ -26,7 +26,7 @@ class RasterInkCodecTest {
         val ink=art();assertNull(RasterInkCodec.encodeOrNull(ink.copy(strokes=ink.strokes.map{stroke->InkStroke(stroke.points.map{it.copy(time=1)})})))
         assertNull(RasterInkCodec.encodeOrNull(ink.copy(strokes=ink.strokes.map{stroke->InkStroke(stroke.points.map{it.copy(pressure=.5f)})})))
         val source=Autograph(aspect=1.8f,strokes=listOf(InkStroke(listOf(InkPoint(.1f,.2f,0),InkPoint(.8f,.7f,200)))))
-        assertTrue(String(TapPacket.encode(source),0,4) in listOf("TAG1","TAG3"))
+        assertTrue(String(TapPacket.encode(source),0,4) in listOf("TAG1","TAG3","TAG4"))
     }
     @Test fun corruptionAndTrailingBytesAreRejected(){
         val packet=requireNotNull(RasterInkCodec.encodeOrNull(art()))

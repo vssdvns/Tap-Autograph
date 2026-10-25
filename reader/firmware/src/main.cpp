@@ -42,6 +42,7 @@ char line[160];
 size_t used = 0;
 bool overflow = false;
 uint8_t pollMs = 10;
+bool bulkRead = false;
 uint32_t serialBaud = 115200;
 uint32_t lastCommandMs = 0;
 
@@ -56,7 +57,12 @@ void command(char *text) {
   uint32_t id=strtoul(idText,nullptr,10);
   lastCommandMs = millis();
   if(strcmp(op,"STATUS")==0){
-    char fields[360];snprintf(fields,sizeof(fields),"\"firmware\":\"tap-reader-0.5\",\"pn532\":%s,\"mode\":\"SPI\",\"sck\":%d,\"miso\":%d,\"mosi\":%d,\"cs\":%d,\"transport\":2,\"serial_baud\":%lu,\"performance\":1,\"diagnostics\":1,\"stage\":\"%s\",\"attempts\":%u,\"chip_version\":%lu",ready?"true":"false",TAP_SCK,TAP_MISO,TAP_MOSI,TAP_CS,(unsigned long)serialBaud,initStage,initAttempts,(unsigned long)chipVersion);reply(id,"status",fields);return;
+    char fields[512];snprintf(fields,sizeof(fields),"\"firmware\":\"tap-reader-0.5\",\"pn532\":%s,\"mode\":\"SPI\",\"sck\":%d,\"miso\":%d,\"mosi\":%d,\"cs\":%d,\"spi_bulk\":1,\"spi_timing\":1,\"transport\":2,\"serial_baud\":%lu,\"performance\":1,\"diagnostics\":1,\"stage\":\"%s\",\"attempts\":%u,\"chip_version\":%lu",ready?"true":"false",TAP_SCK,TAP_MISO,TAP_MOSI,TAP_CS,(unsigned long)serialBaud,initStage,initAttempts,(unsigned long)chipVersion);reply(id,"status",fields);return;
+  }
+  if(strcmp(op,"SPI")==0){
+    char *mode=strtok_r(nullptr," ",&save);
+    if(!mode || (strcmp(mode,"0") && strcmp(mode,"1")) || strtok_r(nullptr," ",&save)){reply(id,"error","\"code\":\"bad_spi_mode\"");return;}
+    bulkRead=strcmp(mode,"1")==0;nfc.setBulkRead(bulkRead);reply(id,"spi",bulkRead?"\"bulk_read\":true":"\"bulk_read\":false");return;
   }
   if(strcmp(op,"BAUD")==0){
     char *rate=strtok_r(nullptr," ",&save);
@@ -86,7 +92,7 @@ void command(char *text) {
   if(!nfc.inDataExchange(bytes,count,response,&length)){selectedTarget=false;reply(id,"error","\"code\":\"exchange_failed\"");return;}
   const uint32_t exchangeUs = uint32_t(micros() - exchangeStarted);
   // One bounded write avoids hundreds of printf calls / tiny UART submissions.
-  char output[560];
+  char output[768];
   int offset=snprintf(output,sizeof(output),"{\"id\":%lu,\"event\":\"apdu\",\"%s\":\"",(unsigned long)id,base64Reply?"response_b64":"response");
   if(base64Reply){
     const char *digits="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -99,7 +105,7 @@ void command(char *text) {
     const char *digits="0123456789ABCDEF";
     for(uint16_t i=0;i<length;i++){output[offset++]=digits[response[i]>>4];output[offset++]=digits[response[i]&15];}
   }
-  offset+=snprintf(output+offset,sizeof(output)-offset,"\",\"exchange_us\":%lu,\"poll_ms\":%u}\n",(unsigned long)exchangeUs,pollMs);
+  offset+=snprintf(output+offset,sizeof(output)-offset,"\",\"exchange_us\":%lu,\"poll_ms\":%u,\"write_us\":%lu,\"ack_us\":%lu,\"wait_us\":%lu,\"read_us\":%lu,\"bulk_read\":%s}\n",(unsigned long)exchangeUs,pollMs,(unsigned long)nfc.tapWriteUs,(unsigned long)nfc.tapAckUs,(unsigned long)nfc.tapWaitUs,(unsigned long)nfc.tapReadUs,bulkRead?"true":"false");
   Serial.write((const uint8_t *)output,offset);
 }
 void setup() {

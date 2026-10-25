@@ -29,3 +29,11 @@ Three seconds without valid commands at high speed restores 115200 and discards 
 input. APDUB uses the same hex request bytes as APDU but responds with response_b64;
 legacy APDU hex responses remain supported. Base64 is canonical padded RFC 4648,
 max 272 characters for 204 bytes; clients strictly reject malformed/oversized replies.
+
+### Optional bulk SPI and phase timing (v0.16)
+
+STATUS includes spi_bulk:1 and spi_timing:1 capabilities. SPI <id> 0|1 acknowledges with
+event:spi and bulk_read:boolean; other values/extra arguments fail bad_spi_mode. Bulk off is
+the reset default. APDU/APDUB replies include write_us, ack_us, wait_us, read_us and bulk_read
+alongside exchange_us. Phases are diagnostics only, not authentication or APDU payload bytes.
+Clients ignore missing/invalid phase data. UART and packet-size bounds are unchanged.

@@ -9,7 +9,8 @@ object TapPacket {
         val vector=CompactInkCodec.encode(quick)
         val raster=RasterInkCodec.encodeOrNull(quick)
         val column=runCatching{ColumnInkCodec.encode(quick)}.getOrNull()
-        return listOfNotNull(vector,raster,column).minBy{it.size}
+        val predictive=runCatching{ColumnInkCodec.encode(quick,true)}.getOrNull()
+        return listOfNotNull(vector,raster,column,predictive).minBy{it.size}
     }
     internal fun prepare(ink:Autograph):Autograph {
         val compact=ink.copy(strokes=ink.strokes.map { stroke ->

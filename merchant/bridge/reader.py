@@ -84,6 +84,7 @@ class SerialAdapter:
             raise ReaderError('Unexpected firmware. Flash tap-reader-0.5.')
         self.performance = result.get('performance') == 1
         self.transport = result.get('transport',0)
+        self.spi_bulk_supported = result.get('spi_bulk') == 1
         return result.get('pn532') is True
     def tune(self, poll_ms):
         if not getattr(self, 'performance', False):
@@ -104,6 +105,13 @@ class SerialAdapter:
         if result.get('event') != 'status' or result.get('transport') != 2 or result.get('serial_baud') != 460800:
             raise ReaderError('Fast USB handshake failed. Reconnect and use the baseline launcher.')
         self.binary_reply = True
+    def configure_spi(self, enabled):
+        if not getattr(self,'spi_bulk_supported',False):
+            raise ReaderError('Flash the SPI performance firmware before selecting bulk SPI.')
+        result=self.request('SPI','1' if enabled else '0')
+        if result.get('event')!='spi' or result.get('bulk_read') is not enabled:
+            raise ReaderError('Reader did not accept SPI mode.')
+        self.bulk_read=enabled
     def poll(self):
         return self.request('POLL').get('found') is True
     def exchange(self, command):
@@ -112,6 +120,9 @@ class SerialAdapter:
         elapsed = time.monotonic() - started
         firmware_us = result.get('exchange_us')
         self.last_exchange_metrics = {'roundtrip_seconds': elapsed, 'reader_seconds': firmware_us / 1_000_000 if type(firmware_us) is int and 0 <= firmware_us <= 4_000_000 else None}
+        phases={key:result.get(key+'_us') for key in ('write','ack','wait','read')}
+        if all(type(v) is int and 0<=v<=4_000_000 for v in phases.values()) and type(firmware_us) is int and sum(phases.values())<=firmware_us+100:
+            self.last_exchange_metrics['phases']={key:value/1_000_000 for key,value in phases.items()}
         try:
             if result.get('event') != 'apdu': raise ValueError()
             if getattr(self,'binary_reply',False):
@@ -223,6 +234,12 @@ def read_transfer(adapter, publish, state=lambda code:None, select_command=SELEC
             metrics['reader_exchange_seconds'] = round(sum(m['reader_seconds'] for m in measured), 4)
             metrics['usb_host_seconds'] = round(sum(max(0, m['roundtrip_seconds'] - m['reader_seconds']) for m in measured), 4)
             metrics['measured_chunks'] = len(measured)
+        timed=[m for m in chunk_metrics if 'phases' in m]
+        if timed:
+            metrics['phase_measured_chunks']=len(timed)
+            for key in ('write','ack','wait','read'):
+                metrics['pn532_'+key+'_seconds']=round(sum(m['phases'][key] for m in timed),4)
+    if getattr(adapter,'bulk_read',None) is not None: metrics['bulk_spi']=adapter.bulk_read
     try:
         response_data(adapter.exchange(b'\x80\x20\x00\x00\x28' + session + expected_hash))
     except ReaderError:
@@ -263,6 +280,7 @@ def main():
     parser.add_argument('--port',help='USB serial port, for example COM5')
     parser.add_argument('--server',default='http://127.0.0.1:8787')
     parser.add_argument('--simulate',metavar='JSON',help='Replay a synthetic reader transcript without hardware')
+    parser.add_argument('--spi-bulk',action='store_true',help='Enable buffered hardware-SPI reads (new firmware only)')
     parser.add_argument('--fast-usb',action='store_true',help='Negotiate 460800 baud and base64 replies (transport-2 firmware)')
     parser.add_argument('--poll-ms',type=int,choices=(1,10),help='Performance firmware polling profile; no baud/wiring change')
     parser.add_argument('--list',action='store_true',help='List USB serial ports; opens none')
@@ -281,6 +299,12 @@ def main():
         if not adapter.status():
             merchant.state('pn532_missing',adapter.simulated)
             raise ReaderError('ESP32 replied, but PN532 was not detected. Check mode, power and wiring, then reset.')
+        if args.spi_bulk:
+            if args.simulate: raise ReaderError('Bulk SPI requires physical reader hardware.')
+            adapter.configure_spi(True)
+            print('Bulk SPI reads enabled; clock and wiring unchanged.')
+        elif getattr(adapter,'spi_bulk_supported',False):
+            adapter.configure_spi(False)
         if args.fast_usb:
             if args.simulate: raise ReaderError('Fast USB requires physical reader hardware.')
             adapter.fast_usb()
