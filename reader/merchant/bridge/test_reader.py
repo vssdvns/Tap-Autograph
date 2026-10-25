@@ -118,6 +118,45 @@ class ReaderTests(unittest.TestCase):
         adapter.request=lambda *args:{'event':'apdu','response':'9000','exchange_us':-1}
         adapter.exchange(b'12345')
         self.assertIsNone(adapter.last_exchange_metrics['reader_seconds'])
+    def test_fast_usb_handshake_and_shutdown_restore_legacy_speed(self):
+        from unittest.mock import patch
+        class Port:
+            baudrate=115200
+            def close(self):self.closed=True
+        adapter=SerialAdapter.__new__(SerialAdapter);adapter.serial=Port();adapter.transport=2
+        calls=[]
+        def request(op,data=''):
+            calls.append((op,data,adapter.serial.baudrate))
+            return {'event':'baud','serial_baud':int(data)} if op=='BAUD' else {'event':'status','transport':2,'serial_baud':adapter.serial.baudrate}
+        adapter.request=request
+        with patch('reader.time.sleep'):
+            adapter.fast_usb();self.assertTrue(adapter.binary_reply);adapter.close()
+        self.assertEqual(calls,[('BAUD','460800',115200),('STATUS','',460800),('BAUD','115200',460800)])
+        self.assertTrue(adapter.serial.closed)
+    def test_fast_usb_requires_capability_and_verifies_new_speed(self):
+        from unittest.mock import patch
+        adapter=SerialAdapter.__new__(SerialAdapter)
+        with self.assertRaisesRegex(ReaderError,'transport-2'):adapter.fast_usb()
+        class Port:baudrate=115200
+        adapter.serial=Port();adapter.transport=2
+        adapter.request=lambda op,data='':{'event':'baud','serial_baud':460800} if op=='BAUD' else {'event':'status','serial_baud':115200}
+        with patch('reader.time.sleep'),self.assertRaisesRegex(ReaderError,'handshake'):adapter.fast_usb()
+    def test_base64_reply_is_exact_bounded_and_canonical(self):
+        import base64
+        adapter=SerialAdapter.__new__(SerialAdapter);adapter.binary_reply=True
+        response=bytes(range(204));calls=[]
+        def request(op,data):calls.append(op);return {'event':'apdu','response_b64':base64.b64encode(response).decode(),'exchange_us':1000}
+        adapter.request=request
+        self.assertEqual(adapter.exchange(b'12345'),response);self.assertEqual(calls,['APDUB'])
+        for bad in ['!!!!','AA==','A'*276,'Zh==']:
+            adapter.request=lambda *args:{'event':'apdu','response_b64':bad}
+            with self.assertRaisesRegex(ReaderError,'Malformed'):adapter.exchange(b'12345')
+    def test_kotlin_column_fixture_preserves_transfer_integrity(self):
+        fixture=FIXTURE.parent/'column-reader.json';published=[]
+        result=read_transfer(ReplayAdapter(fixture),lambda *args:published.append(args))
+        self.assertEqual(published[0][0],(FIXTURE.parent/'column.tai').read_bytes())
+        self.assertEqual(result['packet_format'],'TAG3')
+        self.assertTrue(result['acknowledged']);self.assertTrue(result['simulated'])
     def test_remote_server_urls_are_rejected_before_network_use(self):
         for url in ['https://localhost:8787','http://example.com','http://localhost@evil.test','http://localhost:8787/path']:
             with self.assertRaises(ReaderError):LocalMerchant(url)

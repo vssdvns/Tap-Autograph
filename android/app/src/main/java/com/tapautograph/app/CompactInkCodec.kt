@@ -21,6 +21,21 @@ object CompactInkCodec {
     private val magic = byteArrayOf(0x54, 0x41, 0x47, 0x31) // TAG1
 
     fun encode(autograph: Autograph, compress: Boolean = true): ByteArray {
+        val body = encodeBody(autograph)
+        val zipped = if (compress) ByteArrayOutputStream().also { buffer -> DeflaterOutputStream(buffer).use { it.write(body) } }.toByteArray() else body
+        val useZip = compress && zipped.size < body.size
+        val payload = if (useZip) zipped else body
+        require(payload.size + HEADER_SIZE <= MAX_PACKET) { "Compact autograph exceeds 64 KiB. Use a shorter autograph." }
+        return ByteArrayOutputStream().also { buffer ->
+            DataOutputStream(buffer).use { out ->
+                out.write(magic); out.writeByte(if (useZip) 1 else 0)
+                out.writeInt(body.size); out.writeInt(CRC32().also { it.update(body) }.value.toInt())
+                out.write(payload)
+            }
+        }.toByteArray()
+    }
+
+    internal fun encodeBody(autograph:Autograph):ByteArray {
         require(autograph.valid()) { "Invalid autograph." }
         require(autograph.color in 0..0xffffffffL) { "Invalid ink color." }
         require(autograph.strokes.size <= MAX_STROKES && autograph.strokes.sumOf { it.points.size } <= MAX_POINTS) { "Use a shorter autograph (maximum 30,000 points)." }
@@ -48,20 +63,11 @@ object CompactInkCodec {
         }
         val body = bodyBuffer.toByteArray()
         require(body.size <= MAX_BODY) { "Autograph exceeds decoded size limit." }
-        val zipped = if (compress) ByteArrayOutputStream().also { buffer -> DeflaterOutputStream(buffer).use { it.write(body) } }.toByteArray() else body
-        val useZip = compress && zipped.size < body.size
-        val payload = if (useZip) zipped else body
-        require(payload.size + HEADER_SIZE <= MAX_PACKET) { "Compact autograph exceeds 64 KiB. Use a shorter autograph." }
-        return ByteArrayOutputStream().also { buffer ->
-            DataOutputStream(buffer).use { out ->
-                out.write(magic); out.writeByte(if (useZip) 1 else 0)
-                out.writeInt(body.size); out.writeInt(CRC32().also { it.update(body) }.value.toInt())
-                out.write(payload)
-            }
-        }.toByteArray()
+        return body
     }
 
     fun decode(packet: ByteArray): Autograph {
+        if(packet.size>=4 && String(packet,0,4,Charsets.US_ASCII)=="TAG3")return ColumnInkCodec.decode(packet)
         if(packet.size>=4 && String(packet,0,4,Charsets.US_ASCII)=="TAG2")return RasterInkCodec.decode(packet)
         require(packet.size in (HEADER_SIZE + 1)..MAX_PACKET) { "Invalid compact payload size." }
         val envelope = DataInputStream(ByteArrayInputStream(packet))
@@ -75,6 +81,10 @@ object CompactInkCodec {
         val payload = packet.copyOfRange(HEADER_SIZE, packet.size)
         val body = if (flags == 1) inflate(payload, bodyLength) else payload.also { require(it.size == bodyLength) { "Incorrect body length." } }
         require(CRC32().also { it.update(body) }.value == checksum) { "Compact payload checksum mismatch." }
+        return decodeBody(body,packet)
+    }
+
+    internal fun decodeBody(body:ByteArray,packet:ByteArray):Autograph {
         try {
             val input = DataInputStream(ByteArrayInputStream(body))
             val aspect = input.readUnsignedShort() / 1024f
@@ -105,7 +115,7 @@ object CompactInkCodec {
         } catch (e: java.io.EOFException) { throw IllegalArgumentException("Truncated handwriting data.", e) }
     }
 
-    private fun inflate(payload: ByteArray, declared: Int): ByteArray {
+    internal fun inflate(payload: ByteArray, declared: Int): ByteArray {
         val inflater = Inflater()
         try {
             inflater.setInput(payload)

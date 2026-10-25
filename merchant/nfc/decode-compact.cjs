@@ -5,7 +5,7 @@ const crypto = require('node:crypto');
 function decode(packet) {
   const check = (ok, message) => { if (!ok) throw new Error(message); };
   check(packet.length >= 14 && packet.length <= 65536, 'Invalid packet length');
-  const magic=packet.toString('ascii',0,4);check(['TAG1','TAG2'].includes(magic),'Unsupported version');
+  const magic=packet.toString('ascii',0,4);check(['TAG1','TAG2','TAG3'].includes(magic),'Unsupported version');
   const flags = packet[4], length = packet.readUInt32BE(5);
   check(flags <= 1 && length > 0 && length <= 1048576, 'Invalid header');
   if(magic==='TAG2')check(flags===1&&length>=12&&length<=3210,'Invalid raster bounds');
@@ -48,13 +48,16 @@ function decode(packet) {
   check(aspect>0 && aspect<20 && width>=.001 && width<=.04,'Invalid drawing properties');
   const count=variable(1000);check(count>0,'Empty ink');
   let total=0,time=0; const strokes=[];
+  const counts=magic==='TAG3'?Array.from({length:count},()=>{const n=variable(30000);total+=n;check(n>0&&total<=30000,'Invalid point count');return n;}):null;
+  const fields=counts?Array.from({length:5},(_,c)=>Array.from({length:total},()=>c<3?variable(c<2?8190:86400000):byte())):null;
+  let point=0;
   const unzig = n => (n>>>1)^-(n&1);
   for(let s=0;s<count;s++) {
-    const n=variable(30000);total+=n;check(n>0&&total<=30000,'Invalid point count');
+    const n=counts?counts[s]:variable(30000);if(!counts)total+=n;check(n>0&&total<=30000,'Invalid point count');
     let x=0,y=0; const points=[];
     for(let p=0;p<n;p++) {
-      x+=unzig(variable(8190));y+=unzig(variable(8190));time+=variable(86400000);
-      const pressure=byte()/127.5,tool=byte();
+      x+=unzig(fields?fields[0][point]:variable(8190));y+=unzig(fields?fields[1][point]:variable(8190));time+=fields?fields[2][point]:variable(86400000);
+      const pressure=(fields?fields[3][point]:byte())/127.5,tool=fields?fields[4][point]:byte();point++;
       check(x>=0&&x<=4095&&y>=0&&y<=4095&&time<=86400000&&tool<=4,'Invalid point');
       points.push({x:x/4095,y:y/4095,time,pressure,tool});
     } strokes.push({points});

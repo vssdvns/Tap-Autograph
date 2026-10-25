@@ -49,7 +49,7 @@ class SerialAdapter:
         self.serial = serial.Serial(port, 115200, timeout=.1, write_timeout=1)
         self.serial.dtr = False
         self.serial.rts = False
-        time.sleep(2)  # Some ESP32 USB UART bridges reset when the port opens.
+        time.sleep(3.5)  # USB reset/startup and high-speed idle fallback to 115200.
         self.serial.reset_input_buffer()
         self.sequence = 0
     def request(self, op, data=''):
@@ -83,6 +83,7 @@ class SerialAdapter:
         if result.get('firmware') != 'tap-reader-0.5' or result.get('event') != 'status':
             raise ReaderError('Unexpected firmware. Flash tap-reader-0.5.')
         self.performance = result.get('performance') == 1
+        self.transport = result.get('transport',0)
         return result.get('pn532') is True
     def tune(self, poll_ms):
         if not getattr(self, 'performance', False):
@@ -91,22 +92,47 @@ class SerialAdapter:
         if result.get('event') != 'tuned' or result.get('poll_ms') != poll_ms:
             raise ReaderError('Reader did not accept the polling profile.')
         self.poll_ms = poll_ms
+    def fast_usb(self):
+        if getattr(self, 'transport', 0) != 2:
+            raise ReaderError('Flash the transport-2 firmware before enabling fast USB.')
+        result = self.request('BAUD', '460800')
+        if result.get('event') != 'baud' or result.get('serial_baud') != 460800:
+            raise ReaderError('Reader did not accept fast USB.')
+        self.serial.baudrate = 460800
+        time.sleep(.075)
+        result = self.request('STATUS')
+        if result.get('event') != 'status' or result.get('transport') != 2 or result.get('serial_baud') != 460800:
+            raise ReaderError('Fast USB handshake failed. Reconnect and use the baseline launcher.')
+        self.binary_reply = True
     def poll(self):
         return self.request('POLL').get('found') is True
     def exchange(self, command):
         started = time.monotonic()
-        result = self.request('APDU', command.hex().upper())
+        result = self.request('APDUB' if getattr(self,'binary_reply',False) else 'APDU', command.hex().upper())
         elapsed = time.monotonic() - started
         firmware_us = result.get('exchange_us')
         self.last_exchange_metrics = {'roundtrip_seconds': elapsed, 'reader_seconds': firmware_us / 1_000_000 if type(firmware_us) is int and 0 <= firmware_us <= 4_000_000 else None}
         try:
-            if result.get('event') != 'apdu' or not isinstance(result.get('response'),str) or len(result['response']) > 408:
-                raise ValueError()
-            response = bytes.fromhex(result['response'])
+            if result.get('event') != 'apdu': raise ValueError()
+            if getattr(self,'binary_reply',False):
+                encoded=result.get('response_b64')
+                if not isinstance(encoded,str) or len(encoded)>272: raise ValueError()
+                response=base64.b64decode(encoded,validate=True)
+                if base64.b64encode(response).decode()!=encoded: raise ValueError()
+            else:
+                if not isinstance(result.get('response'),str) or len(result['response'])>408: raise ValueError()
+                response=bytes.fromhex(result['response'])
+            if not 2 <= len(response) <= 204: raise ValueError()
         except (ValueError, KeyError):
             raise ReaderError('Malformed APDU reply.') from None
         return response
     def close(self):
+        if getattr(self.serial,'baudrate',115200)!=115200:
+            try:
+                self.request('BAUD','115200')
+                time.sleep(.075)
+            except (ReaderError, OSError):
+                pass  # Firmware also returns to 115200 after three idle seconds.
         self.serial.close()
 
 class ReplayAdapter:
@@ -186,6 +212,9 @@ def read_transfer(adapter, publish, state=lambda code:None, select_command=SELEC
     published = time.monotonic()
     state('verified')
     metrics = {'packet_format': packet[:4].decode('ascii', errors='replace')}
+    if isinstance(adapter,SerialAdapter):
+        metrics['serial_baud']=getattr(adapter.serial,'baudrate',115200)
+        metrics['usb_encoding']='base64' if getattr(adapter,'binary_reply',False) else 'hex'
     if getattr(adapter, 'poll_ms', None) is not None: metrics['poll_ms'] = adapter.poll_ms
     if chunk_metrics:
         metrics['chunk_roundtrip_seconds'] = round(sum(m['roundtrip_seconds'] for m in chunk_metrics), 4)
@@ -234,6 +263,7 @@ def main():
     parser.add_argument('--port',help='USB serial port, for example COM5')
     parser.add_argument('--server',default='http://127.0.0.1:8787')
     parser.add_argument('--simulate',metavar='JSON',help='Replay a synthetic reader transcript without hardware')
+    parser.add_argument('--fast-usb',action='store_true',help='Negotiate 460800 baud and base64 replies (transport-2 firmware)')
     parser.add_argument('--poll-ms',type=int,choices=(1,10),help='Performance firmware polling profile; no baud/wiring change')
     parser.add_argument('--list',action='store_true',help='List USB serial ports; opens none')
     args=parser.parse_args()
@@ -251,6 +281,10 @@ def main():
         if not adapter.status():
             merchant.state('pn532_missing',adapter.simulated)
             raise ReaderError('ESP32 replied, but PN532 was not detected. Check mode, power and wiring, then reset.')
+        if args.fast_usb:
+            if args.simulate: raise ReaderError('Fast USB requires physical reader hardware.')
+            adapter.fast_usb()
+            print('Fast USB active: 460800 baud, base64 replies.')
         if args.poll_ms is not None:
             if args.simulate: raise ReaderError('Polling profiles require physical reader hardware.')
             adapter.tune(args.poll_ms)

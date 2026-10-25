@@ -57,3 +57,9 @@ Tips and the signature pad share one customer screen. Draw then Continue, or cho
 ## Performance experiment
 
 See [PERFORMANCE-TEST.md](PERFORMANCE-TEST.md) for buffered USB replies, optional 1 ms polling, instrumentation, and the 10-run A/B procedure. Requires one firmware update; keep the current phone app.
+
+## v0.15 turbo transfer
+
+See [TURBO-TRANSFER.md](TURBO-TRANSFER.md) for the updated phone encoding and optional
+460800-baud/Base64 USB mode. Run start-reader-turbo.bat after one firmware flash; baseline
+mode remains available. Update this merchant before installing the v0.15 phone app.

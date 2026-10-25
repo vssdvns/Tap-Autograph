@@ -5,6 +5,13 @@ import kotlin.math.abs
 /** NFC copy only. Keep the gallery original and every stroke endpoint. */
 object TapPacket {
     fun encode(ink:Autograph):ByteArray {
+        val quick=prepare(ink)
+        val vector=CompactInkCodec.encode(quick)
+        val raster=RasterInkCodec.encodeOrNull(quick)
+        val column=runCatching{ColumnInkCodec.encode(quick)}.getOrNull()
+        return listOfNotNull(vector,raster,column).minBy{it.size}
+    }
+    internal fun prepare(ink:Autograph):Autograph {
         val compact=ink.copy(strokes=ink.strokes.map { stroke ->
             val p=stroke.points
             if(p.size<3)stroke else {
@@ -34,11 +41,9 @@ object TapPacket {
         })
         val first=ink.strokes.first().points.first().time
         val duration=ink.strokes.last().points.last().time-first
-        val quick=if(duration>1200)compact.copy(strokes=compact.strokes.map { stroke->
+        return if(duration>1200)compact.copy(strokes=compact.strokes.map { stroke->
             InkStroke(stroke.points.map{it.copy(time=(it.time-first)*1200/duration)})
         }) else compact
-        val vector=CompactInkCodec.encode(quick)
-        val raster=RasterInkCodec.encodeOrNull(quick)
-        return if(raster!=null && raster.size<vector.size)raster else vector
     }
+
 }

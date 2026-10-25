@@ -19,3 +19,13 @@ The response is `{"id":1,"event":"tuned","poll_ms":1}`; invalid or additional
 arguments return `bad_profile`. Reset defaults to 10 ms. Baud remains 115200.
 APDU replies additionally include `exchange_us` (inDataExchange elapsed microseconds)
 and `poll_ms`; clients may ignore these fields. No APDU command or payload changes.
+
+### Transport capability 2 (v0.15)
+
+STATUS now includes transport:2 and serial_baud. BAUD <id> 115200|460800 responds at
+its current speed with event:baud and serial_baud, flushes, waits 25 ms, then switches.
+The host waits 75 ms after changing speed and verifies STATUS before transferring.
+Three seconds without valid commands at high speed restores 115200 and discards partial
+input. APDUB uses the same hex request bytes as APDU but responds with response_b64;
+legacy APDU hex responses remain supported. Base64 is canonical padded RFC 4648,
+max 272 characters for 204 bytes; clients strictly reject malformed/oversized replies.

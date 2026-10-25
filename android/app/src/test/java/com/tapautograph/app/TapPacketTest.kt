@@ -21,7 +21,7 @@ class TapPacketTest {
         val pressure=ink(listOf(InkPoint(.1f,.2f,0,.2f),InkPoint(.5f,.2f,100,1.8f),InkPoint(.9f,.2f,200,.2f)))
         assertEquals(3,CompactInkCodec.decode(TapPacket.encode(pressure)).strokes.single().points.size)
         val meme=source.copy(strokes=listOf(InkStroke(listOf(InkPoint(.1f,.2f,0),InkPoint(.7f,.2f,0))),InkStroke(listOf(InkPoint(.1f,.5f,0),InkPoint(.7f,.5f,0)))))
-        assertArrayEquals(CompactInkCodec.encode(meme),TapPacket.encode(meme))
+        assertEquals(CompactInkCodec.decode(CompactInkCodec.encode(meme)).strokes,CompactInkCodec.decode(TapPacket.encode(meme)).strokes)
     }
     @Test fun wheelChoiceFreezesAtFinalOfferAndCannotExtendWindow(){
         var time=0L;val c=TwoTapCard{time}

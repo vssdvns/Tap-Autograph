@@ -1,4 +1,5 @@
 @echo off
+set "PLATFORMIO_SETTING_ENABLE_TELEMETRY=no"
 cd /d "%~dp0"
 if not exist .venv\Scripts\python.exe goto missing
 echo This profile targets classic ESP32-WROOM-32 dev boards, NOT ESP32-S3/C3.
