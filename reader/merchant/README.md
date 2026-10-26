@@ -1,3 +1,23 @@
+# Tap Autograph Merchant — v0.16.0
+
+A Node.js prototype serving synchronized cashier and customer displays. Payments are simulated; no payment provider or commercial POS is integrated.
+
+Start with Node.js 20+: `node server.cjs` (Windows: `start-merchant.bat`). No npm install is required. Open localhost:8787, then use Open customer display for the paired page on port 8788. A portable monitor shows another browser window; a separate device uses the generated paired LAN link.
+
+Add items, proceed to payment and use the NFC reader for the first simulated-payment tap. The customer screen combines tipping and a manual signature pad. Draw + Continue, choose a tip + tap the phone for saved artwork, or skip the autograph. The server owns prices, final totals and checkout state. The autograph is animated and the receipt appears after completion.
+
+Use the current bridge, firmware and Android app together. TAG1–TAG4 packets are supported. Start the Python bridge only after the server; its Windows Turbo launcher is in the parent Reader Kit. The Android phone does not need merchant Wi-Fi for the NFC path.
+
+Run `node --test` here and `python3 -m unittest discover -s bridge -p 'test_*.py'` for bridge checks. For a hardware-free trial use the kit simulator, `/nfc-lab` and bundled fixtures. `/classic` retains the earlier combined demo.
+
+Local HTTP and NFC transport are unencrypted, and the reader is unauthenticated; use sample artwork on a trusted demo setup. Server restart resets in-memory state and requires display pairing again. See [NFC checkout](NFC-CHECKOUT.md) and the parent project's current README for overall setup and limits.
+
+## Historical merchant release notes
+
+The sections below preserve their original version context. Statements that NFC is future work or hardware-unverified describe older releases.
+
+---
+
 # Tap Autograph Merchant 0.5 — automatic USB reader input
 
 New: bridge/reader.py drives our ESP32/PN532 serial APDU proxy, reassembles chunks with bounded retry/reconnect, sends the verified packet to the local server, and only then requests the phone's completion acknowledgement. The browser at http://localhost:8787/nfc-lab automatically plays new received packets. Lab0.4 on the phone remains compatible. The original QR checkout and manual reader-transcript import remain available.

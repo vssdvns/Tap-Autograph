@@ -1,3 +1,19 @@
+# Tap Autograph Android — v0.16.0
+
+The current app combines Wallet/Studio tabs, fictional swipeable cards, compact tap feedback, a favorites dial, photo/meme import, selected-artwork previews and automatic autograph readiness after a simulated payment. Keep NFC enabled and the phone unlocked. Android may require a retap or suppress background UI launch; Open tap screen is the foreground fallback.
+
+Build with JDK 17, SDK 35 and the pinned Gradle wrapper: `./gradlew assembleDebug testDebugUnitTest` (Windows: `gradlew.bat`). Debug package: `com.tapautograph.app.lab`; version code 16. Local debug keys cannot replace APKs signed with another key. Preserve gallery data before changing installations; distribution keys are not in GitHub.
+
+Use the current merchant and reader firmware with this app. TAG1–TAG4 artwork candidates are supported; the smallest valid candidate is chosen. Artwork remains optional personalization and no real payment credentials are read or transmitted.
+
+See [project setup](../README.md), [v0.16 scope](../docs/RELEASE-v0.16.md), [photo import](../docs/PHOTO-MEME.md) and [compact checkout](../docs/COMPACT-CHECKOUT.md).
+
+## Historical release notes
+
+The sections below record earlier versions. Old install prompts, manual-sharing steps and hardware-unverified statements apply to their named release, not the current v0.16 demonstration.
+
+---
+
 # Lab 0.8 — two-tap NFC demo
 
 Home now includes **Two-tap NFC checkout**. Start the foreground demo, tap once for fictional card acceptance, remove the phone to choose a merchant tip, then tap again to review the final total and approve autograph sharing. Keep holding until merchant receipt is acknowledged. See `../docs/TWO-TAP-CHECKOUT.md` for the complete flow and protocol. The old NFC payload lab is unchanged.

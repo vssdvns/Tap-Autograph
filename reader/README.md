@@ -1,3 +1,19 @@
+# Tap Autograph Reader — v0.16
+
+Working prototype path: Android HCE → PN532 over SPI → ESP32 USB → Python bridge → Node merchant/customer displays. The reader exchanges only the custom autograph protocol; payment is simulated.
+
+For Windows: run `setup-tools.bat`, verify [hardware wiring](HARDWARE-SETUP.md), flash the current firmware once with `flash-firmware.bat`, then run `start-merchant.bat` and `start-reader-turbo.bat`. Select the actual serial port and close Arduino Serial Monitor/other bridges. Cashier: localhost:8787; pair the customer page on port 8788 from its link.
+
+Use the current Android v0.16 app and included merchant. Turbo uses 460800 baud/Base64 replies and 1 ms polling. `start-reader-bulk.bat` additionally enables the experimental buffered SPI path; no extra physical speedup is established. Baseline launchers remain available for comparisons. No wiring or SPI overclock change is needed.
+
+See [Turbo setup](TURBO-TRANSFER.md), [bulk experiment](READER-BULK.md), [diagnostics](DIAGNOSTICS.md) and [physical performance results](../docs/PERFORMANCE-RESULTS.md) (repository documentation).
+
+## Historical reader release notes
+
+The sections below record the behavior and validation status of their named versions. Use the current setup above first.
+
+---
+
 # Two-tap demo checkout — 0.8
 
 ## Run on Windows

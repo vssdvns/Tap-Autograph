@@ -1,4 +1,4 @@
-# Hardware bring-up checklist (provisional)
+# Hardware setup — tested author profile
 
 Intended board: classic **ESP32-WROOM-32 development board**, configured as PlatformIO esp32dev. Do not flash this binary/profile to an ESP32-S3/C3/S2 without adapting/rebuilding for that model. Intended NFC board: your PN532 breakout in SPI mode.
 
@@ -10,7 +10,7 @@ Intended board: classic **ESP32-WROOM-32 development board**, configured as Plat
 - Have a USB data cable that fits the ESP32 (many WROOM boards use Micro-USB; verify yours), a breadboard and appropriate male/female jumper wires.
 - Keep both boards unpowered while wiring. Avoid metal contact beneath the exposed PCBs/antenna.
 
-## Compiled signal profile — final mapping awaits board photos
+## Tested signal profile
 
 | ESP32 signal | Default GPIO | PN532 signal label |
 | --- | --- | --- |
@@ -19,9 +19,11 @@ Intended board: classic **ESP32-WROOM-32 development board**, configured as Plat
 | MOSI | 23 | MOSI |
 | Chip select | 27 | SS / SSEL / CS |
 | Ground | GND | GND |
-| PN532 power | **Not selected yet** | Verify the module input requirements first |
+| PN532 power | **3V3** | VCC |
 
 ESP32 GPIO uses 3.3V logic; do not feed 5V into its signal pins. The PN532 module's supply voltage and level shifting must be confirmed separately. Do not guess a VCC pin or attach the module to ESP32 VIN based only on the product title. Firmware does not use a separate PN532 IRQ or RESET wire in this SPI profile. An external LED/buzzer/display is optional and not required for the first test.
+
+The author’s red PN532 SPI breakout worked with VCC on ESP32 3V3, DIP switch 1 OFF and switch 2 ON (toward the printed ON label). This switch mapping applies to that breakout; verify the truth table on another module. Use the VCC/GND labels on the SPI header. IRQ and RSTO are unused. Do not connect a breadboard power supply for this setup. A replacement classic ESP32 resolved the author’s earlier communication failure. A lit PN532 power LED alone does not verify SPI communication.
 
 ## Diagnostics
 
@@ -30,7 +32,7 @@ ESP32 GPIO uses 3.3V logic; do not feed 5V into its signal pins. The PN532 modul
 | No COM port | Data cable, USB port, correct board USB-UART driver. Identify the chip before installing a driver. |
 | COM port busy | Close Serial Monitor and any other bridge instance. |
 | ESP32 connected, PN532 missing | Power off; inspect module power, common ground, SPI mode and signal labels; then restart. |
-| Phone found, request declined | Enable sharing again in Lab0.4; keep screen open/unlocked and NFC on. |
+| Phone found, request declined | Start the two-tap demo or enable Lab sharing; keep the phone open/unlocked with NFC on. |
 | Repeated read failures | Hold steady, try phone antenna position, remove metal obstruction/case; confirm driver/board profile. |
 | Packet verified, acknowledgement lost | Laptop has the decoded packet; phone completion was not confirmed. Remove the phone before a new explicit grant. |
 | No automatic playback | Open localhost:8787/nfc-lab, confirm updated server and bridge use the same port; stop an older server. |

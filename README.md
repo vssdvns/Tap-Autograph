@@ -1,86 +1,145 @@
 # Tap Autograph
 
-An Android and merchant checkout prototype that lets a customer share a saved autograph, generated name design, or playful doodle and watch it animate on the merchant screen.
+**Your signature, a doodle, or a meme—shared with another tap.**
 
-## Current prototype
+A working Android and NFC checkout prototype: create artwork once on your phone, complete a simulated payment, then tap again to send it to a customer-facing display.
 
-- **Android Lab 0.6:** draw signatures, import paper signatures from photos, generate font-based name designs, and save original doodles in a gallery.
-- **Wi-Fi checkout:** pair a phone with a laptop, simulate a card tap, select a tip, review the final total, share or skip an autograph, and view an animated receipt.
-- **Experimental NFC:** compact vector payloads, Android host card emulation, and an ESP32/PN532 USB reader bridge.
-- **Receipt artwork:** independent black-and-white PNG previews at 384 or 576 dots; physical printer integration is future work.
+**Kotlin / Jetpack Compose · Android HCE · ESP32 · PN532 · SPI · Python · Node.js**
 
-This is an independent prototype. It does not process payments or integrate with Samsung Wallet, Google Wallet, or payment networks. The autograph is optional personalization, not authentication or payment authorization.
+**Current version: 0.16.0.** Physical phone-to-reader transfers and the checkout workflow have been tested by the author. Payments are simulated. There is no Google Wallet, Samsung Wallet, Apple Pay, payment-network or commercial-POS integration. Autographs are optional personalization, not payment authorization or identity verification.
 
-## Run the Wi-Fi demo
+## Demo
 
-1. Install Node.js 20 or newer on the laptop.
-2. Run `node merchant/server.cjs` (Windows: `merchant/start-merchant.bat`).
-3. Open http://localhost:8787 on the laptop and select its Wi-Fi address.
-4. Open the Android project in Android Studio, use JDK 17 and Android SDK 35, and build the debug variant.
-5. Connect both devices to the same Wi-Fi. In the app gallery, choose **Use for screen & NFC**.
-6. Add items on the merchant page and start checkout. Paste the full pairing URL into Lab's connected checkout screen; the current QR landing page opens the original app scheme.
-7. Connect, simulate the card tap, choose a tip on the laptop, confirm the total, and share the autograph on the phone.
+[Watch the project demo and discussion on LinkedIn](https://lnkd.in/p/gwWEqyTk).
 
-Local builds use Android's standard debug key. They cannot update previously distributed Lab APKs signed with the original development key; use a separate test installation/device or preserve your data before changing installations.
+The idea started with the random scribble left on a checkout signature screen. This prototype explores whether that moment could be more personal, while letting customers share saved artwork, draw on the screen or skip it.
 
-## Repository map
+## How it works
 
-| Directory | Contents |
+1. The merchant selects items; a separate customer display updates with the cart.
+2. The customer taps an unlocked Android phone to the DIY reader for a **simulated payment**.
+3. The phone shows success feedback and starts a 45-second autograph window.
+4. The customer selects a tip and a saved autograph. A favorites dial lets them switch designs.
+5. A second tap confirms the selected tip and transfers the artwork without another Continue button. The customer display animates it and shows a receipt.
+
+Alternatively, draw in the customer display's signature pad and press Continue, or finish without an autograph. Android launch and lock-screen behavior vary by device; opening the app's tap screen remains the foreground fallback.
+
+## Features
+
+| Component | Implemented |
 | --- | --- |
-| `android/` | Kotlin/Jetpack Compose app, signature tools, codec, HCE, tests, protocol docs |
-| `merchant/` | Node.js checkout, browser animation, NFC lab, Python USB bridge |
-| `reader/` | Self-contained ESP32/PN532 reader kit, firmware, launchers and its merchant copy |
+| Android wallet | Overlapping swipeable fictional cards, compact tap panel, success feedback, optional sound/haptics, favorites dial and artwork previews |
+| Artwork studio | Handwriting, font-based name designs, original doodles, photo/meme import, crop/rotate and local plain-background removal |
+| Merchant demo | Cashier/customer displays, live cart updates, tipping, manual signature pad, NFC artwork animation, skip and receipts |
+| NFC transport | Custom HCE/APDU protocol, TAG1–TAG4 compact payload selection, bounded chunk reads, integrity checks and merchant acknowledgement |
+| Reader | ESP32/PN532 SPI firmware, Python USB bridge, baseline/Turbo modes and optional bulk-SPI experiment |
+| Receipt artwork | Black-and-white previews and PNG export; physical printer integration is future work |
+
+The **autograph data travels over NFC**; the phone does not join the merchant's Wi-Fi for this flow. The ESP32 connects to the laptop by USB. A separate customer-display device needs LAN access to the laptop server; a portable monitor displays a second browser window.
+
+No merchant artwork cache or first-tap artwork prefetch is used. Name designs use fonts, not AI handwriting generation. Background removal targets plain backgrounds, not general semantic segmentation.
+
+## Physical performance
+
+Matched author-run tests used the same **1,558-byte TAG3 autograph, 9 chunks and 1 ms polling**:
+
+| USB mode | Completed runs | Mean transfer time |
+| --- | ---: | ---: |
+| 115200 baud / hexadecimal replies | 7 | 1.499 s |
+| Turbo: 460800 baud / Base64 replies | 6 | 1.133 s |
+
+Approximately **24.4% less transfer time** for that sample. These successful-transfer timings come from the bridge; they are not total checkout time or bank authorization time. Failed attempts are not included in the means.
+
+Later bulk-SPI tests completed differently sized packets in 0.706–1.172 s. They do **not** establish another speedup: the 1,558-byte bulk run took 1.172 s. Most measured reader time was spent waiting for the PN532 response. **Turbo is the demo choice; bulk SPI remains experimental.**
+
+See [measurements and methodology](docs/PERFORMANCE-RESULTS.md).
+
+## Quick start
+
+### Requirements
+
+- NFC-capable Android phone; Android 8 / API 26 minimum. NFC must be enabled by the user.
+- Classic ESP32-WROOM-32 development board, PN532 SPI breakout, soldered headers, jumpers and USB data cable.
+- Laptop with Node.js 20+ and Python 3.10+ (3.11/3.12 recommended by the kit).
+- Android Studio, JDK 17 and Android SDK 35 for a source build.
+
+### Android
+
+Open `android/` in Android Studio, or run:
+
+```bash
+cd android
+./gradlew assembleDebug testDebugUnitTest
+```
+
+On Windows use `gradlew.bat`. The debug package is `com.tapautograph.app.lab`. Local builds use your own debug key and cannot update an APK signed with another key. Preserve saved artwork before changing installations. Distribution signing keys are excluded from GitHub.
+
+Save/select artwork for screen and NFC in Studio, enable automatic autograph sharing for the two-tap flow, keep the phone unlocked and open the tap screen. The optional default-wallet setting applies only to this custom reader's prototype AID; it does not enable real card payments.
+
+### Reader and merchant on Windows
+
+From `reader/`:
+
+1. Run `setup-tools.bat` once in the checkout/folder.
+2. Wire the unpowered boards using [the tested hardware profile](reader/HARDWARE-SETUP.md).
+3. Close Serial Monitor and any bridge. Run `flash-firmware.bat`, verify the classic ESP32 target, type `FLASH` and select the actual COM port.
+4. Run `start-merchant.bat`.
+5. Run `start-reader-turbo.bat` and select the ESP32 COM port. COM5 was used by the author; yours may differ.
+6. Open **http://localhost:8787** for the cashier. Use **Open customer display** for the paired page on port **8788**. Move it to the second monitor or use the paired LAN link on another browser device.
+7. Add items and proceed to payment. Follow the two-tap workflow and hold the phone steady until acknowledgement.
+
+One program can own the serial port at a time. Power LEDs show power, not successful communication. See [diagnostics](reader/DIAGNOSTICS.md).
+
+Standalone merchant: `node merchant/server.cjs`. One Node process serves both ports. The self-contained reader kit includes a synchronized merchant copy under `reader/merchant/`.
+
+### Without hardware
+
+After starting the merchant, run `reader/simulate-reader.bat`, or use the Android NFC payload lab and exported fixtures. These test the software path, not physical NFC. The earlier Wi-Fi/QR demo remains available separately.
+
+## Architecture
+
+Android HCE answers the custom reader's APDUs. ESP32 firmware forwards exchanges over USB to the Python bridge. The bridge reassembles and verifies the packet, publishes it to the Node merchant server and acknowledges the phone after merchant acceptance. The customer browser renders the artwork.
+
+The merchant server owns cart, amount and checkout state for both displays. An order ID and nonce correlate taps; they do not authenticate the merchant or encrypt artwork.
+
+## Documentation
+
+| Guide | Contents |
+| --- | --- |
+| [Android](android/README.md) | App build and behavior |
+| [Reader](reader/README.md) | Firmware, launchers and troubleshooting |
+| [Hardware setup](reader/HARDWARE-SETUP.md) | Tested wiring |
+| [Dual displays](docs/DUAL-DISPLAY.md) | Pairing, ports and LAN setup |
+| [Combined signing](docs/COMBINED-SIGNING.md) | Tip, manual signature and phone tap |
+| [Photo and meme import](docs/PHOTO-MEME.md) | Import modes and limits |
+| [Performance results](docs/PERFORMANCE-RESULTS.md) | Physical measurements |
+| [v0.16 notes](docs/RELEASE-v0.16.md) | Scope and validation |
+| [NFC protocol](android/NFC-PROTOCOL.md) | Commands and lifecycle |
+| [Artwork encoding](android/COMPACT-INK-FORMAT.md) | Compact packet formats |
+
+Version-specific guides retain their release context. This overview and the v0.16 notes describe the current prototype. Earlier overview: [development archive](docs/archive/README-v0.16-development.md).
 
 ## Validation
 
-The prepared Android 0.6 build previously passed 49 unit tests. Eleven synthetic studio designs were decoded by the merchant NFC decoder with exact packet equality. See each component's `VALIDATION.md` for scope and limitations. Physical hardware results are separate from simulator results.
+The full v0.16 build previously passed **83 Android tests, 27 Node tests and 30 Python bridge tests** (140 total), plus firmware compilation and host-side serial/SPI checks. Automated hardware checks use mocks; physical results are separate author-run tests.
 
-Run merchant checks with `cd merchant && node --test`. Run bridge checks with `python3 -m unittest discover -s merchant/bridge -p "test_*.py"`. See `android/README.md` for Android build instructions and `reader/README.md` for hardware setup.
+```bash
+cd merchant
+node --test
+```
 
-## Development notes
+From the repository root:
 
-The Wi-Fi prototype uses local HTTP, and the experimental NFC transfer is unauthenticated. Use test artwork. Signing keys, local SDK paths, build products and personal signature data are excluded from this repository. Third-party notices and bundled dependency licenses remain with each component.
+```bash
+python3 -m unittest discover -s merchant/bridge -p 'test_*.py'
+```
 
-## Two-tap demo 0.8
+See component validation files and [SPI validation](docs/READER-BULK.md). The 140-test count records the earlier full v0.16 validation; it is not a new Android/firmware build for this documentation update.
 
-The feature branch adds first-tap fictional card acceptance and second-tap autograph sharing with final amount review on the unlocked foreground phone. See `docs/TWO-TAP-CHECKOUT.md` for setup, protocol and limits.
+## Limits and next steps
 
-## Current NFC checkout
+Artwork/merchant exchanges are unencrypted and the reader is unauthenticated. Use sample artwork on a trusted demo setup. This is not a production financial or electronic-signature system. Commercial wallet/POS support needs explicit integration; selecting the wallet role does not expose another wallet's card tokens.
 
-Reader kit 0.7 connects a new NFC autograph transfer to an explicitly armed merchant order after tip confirmation. See `merchant/NFC-CHECKOUT.md`. The phone needs no Wi-Fi for this mode; payment is simulated on the laptop.
+Future work: matched-packet benchmarks, fewer safe NFC round trips, interrupted-transfer reliability, additional Android device testing and physical printer integration. Optimization is currently paused while gathering demo feedback.
 
-## Next steps
-
-- Test all studio design types through the Wi-Fi checkout on device.
-- Improve pairing links for the Lab application.
-- Validate the NFC reader across phone placements and larger designs.
-- Build a transaction-aware two-tap demo with the phone unlocked and the app open.
-- Explore receipt printer output.
-
-## Wallet V2 (0.9)
-
-Wallet/Studio tabs, swipeable demo cards, opt-in automatic autograph sharing and a 45-second window. Android default-wallet selection is available for controlled prototype-reader tests; real payments are not supported. See [setup and device validation](docs/WALLET-V2.md).
-
-## Dual-display merchant demo (0.10)
-
-Cashier on port 8787, paired customer display on port 8788. Live cart updates, customer-side tipping, NFC autograph playback and synchronized receipts. [Setup and controls](docs/DUAL-DISPLAY.md). The original combined demo remains at `/classic`. No Android update or ESP32 reflash is needed.
-
-## Photo & Meme importer (Android 0.10)
-
-Import photos, memes and transparent PNG stickers, remove a plain background locally, and choose Sticker, Outline, Photo dots or Paper ink. Includes crop/rotate, tolerance controls, NFC artwork and receipt previews. [Usage and limitations](docs/PHOTO-MEME.md). Existing merchant/reader versions work unchanged.
-
-## Compact checkout and favorite emotes (0.11)
-
-See [compact checkout](docs/COMPACT-CHECKOUT.md) for the floating tap card, blue payment check, automatic NFC autograph, six-slot favorites wheel, cold-start fix and transfer improvements. Install the updated app and Reader Kit; no ESP32 reflash. Samsung launch behavior still needs on-device verification.
-
-## Tap polish (0.12)
-
-[Payment chime and cursor-style autograph dial](docs/TAP-POLISH.md): once-per-order acceptance feedback, a small draggable selector after payment, optional sound/haptics, and clearer Samsung unlock/retap wording. App-only update; existing reader firmware and bridge remain compatible.
-
-## Faster transfer and simpler checkout (0.13)
-
-See [transfer changes](docs/FAST-TRANSFER.md) for tightly cropped favorite thumbnails, a clean sending dial, tip selection confirmed by the next phone tap, compact TAG2 meme masks, reduced bridge overhead and separate transport/playback timings. Update both APK and Reader Kit; existing ESP32 firmware remains compatible.
-
-## Combined tip and signature screen (0.14)
-
-[Combined signing](docs/COMBINED-SIGNING.md) restores the selected phone autograph in the dial and a preview box above it. The customer display presents tips and a signature pad together: draw and Continue, or select a tip and tap the phone to finish automatically. Update the app and Reader Kit; keep the current ESP32 firmware.
+Third-party notices and dependency licenses are retained per component. Private keys, local SDK configuration, build products and personal signatures are excluded from this repository.
